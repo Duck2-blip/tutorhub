@@ -1,38 +1,1985 @@
 <!DOCTYPE html>
 <html lang="zh">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-    <title>TutorHub</title>
-    <!-- These are the "brains" of your app -->
-    <script src="https://cloudflare.com"></script>
-    <script src="https://cloudflare.com"></script>
-    <script src="https://cloudflare.com"></script>
-    
-    <style>
-        /* Keep all your CSS here */
-        :root { --primary:#FFB800; --bg:#F8F5EE; }
-        body { font-family: sans-serif; margin: 0; }
-        #root { height: 100vh; }
-    </style>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
+<title>TutorHub</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body,#root{height:100%;overflow:hidden}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;font-size:14px;-webkit-font-smoothing:antialiased}
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:rgba(255,184,0,.4);border-radius:2px}
+@keyframes mPop{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:scale(1)}}
+@keyframes tUp{from{opacity:0;transform:translate(-50%,12px)}to{opacity:1;transform:translate(-50%,0)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+@keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-8px)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes slideUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+:root{
+  --primary:#FFB800;
+  --primary-dark:#E5A500;
+  --primary-light:#FFF4CC;
+  --accent:#4CD964;
+  --accent-dark:#3AB854;
+  --danger:#FF3B30;
+  --warning:#FF9500;
+  --bg:#F8F5EE;
+  --bg-dark:#111111;
+  --card:#FFFFFF;
+  --card-dark:#1E1E1E;
+  --text:#1A1A1A;
+  --text-dark:#F5F5F5;
+  --sub:#888888;
+  --sub-dark:#666666;
+  --border:rgba(0,0,0,.07);
+  --border-dark:rgba(255,255,255,.08);
+  --shadow:0 4px 20px rgba(0,0,0,.08);
+  --shadow-lg:0 8px 32px rgba(0,0,0,.12);
+}
+</style>
 </head>
 <body>
-    <!-- 1. The "Root" div where your app will appear -->
-    <div id="root"></div>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef,useCallback,createContext,useContext}=React;
+const Ctx=createContext(null);
+const useApp=()=>useContext(Ctx);
+const PALS=[["#FFB800","#FF8C00"],["#4CD964","#00B341"],["#FF6B35","#FF3B30"],["#007AFF","#5AC8FA"],["#AF52DE","#FF2D55"],["#FF9500","#FFD60A"],["#34C759","#30D158"],["#5E5CE6","#BF5AF2"],["#FF375F","#FF6961"],["#1C7ED6","#339AF0"],["#0CA678","#20C997"],["#F76707","#FD7E14"],["#364FC7","#4C6EF5"],["#862E9C","#CC5DE8"],["#087F5B","#099268"],["#C92A2A","#E03131"]];
+const palOf=(cls,i)=>PALS[((cls&&cls.colorIdx!=null)?cls.colorIdx:(i||0))%PALS.length];
+const gid=()=>Math.random().toString(36).slice(2,9);
+const toDay=()=>new Date().toISOString().slice(0,10);
+const curMonth=()=>new Date().toISOString().slice(0,7);
+const LS="th_v12";
+const fbUrl=()=>(localStorage.getItem("th_fb")||"").trim().replace(/\/+$/,"");
+let fbEvt=null;
+const fbPush=async(d)=>{const u=fbUrl();if(!u)return;try{await fetch(u+"/th.json",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(d)});}catch{}};
+const fbLoad=async()=>{const u=fbUrl();if(!u)return null;try{const r=await fetch(u+"/th.json");if(!r.ok)return null;return await r.json();}catch{return null;}};
+const fbListen=(cb)=>{const u=fbUrl();if(!u)return;if(fbEvt){try{fbEvt.close();}catch{}}fbEvt=new EventSource(u+"/th.json?accept=text/event-stream");fbEvt.addEventListener("put",(e)=>{try{const p=JSON.parse(e.data);if(p&&p.data&&p.data.users)cb(p.data);}catch{}});fbEvt.onerror=()=>{try{fbEvt.close();}catch{}setTimeout(()=>fbListen(cb),5000);};};
+let bc=null;try{bc=new BroadcastChannel("th_sync");}catch{}
+const bcBcast=(d)=>{try{if(bc)bc.postMessage({type:"data",d});}catch{}};
+const resizeImg=(file,maxW)=>new Promise(res=>{
+  const mw=maxW||900;const r=new FileReader();
+  r.onload=e=>{const img=new Image();img.onload=()=>{const ratio=Math.min(1,mw/img.width);const cv=document.createElement("canvas");cv.width=img.width*ratio;cv.height=img.height*ratio;cv.getContext("2d").drawImage(img,0,0,cv.width,cv.height);res(cv.toDataURL("image/jpeg",.78));};img.src=e.target.result;};r.readAsDataURL(file);
+});
+const mkData=()=>{
+  const n=Date.now();
+  return {
+    users:[
+      {id:"t1",role:"teacher",name:"Teacher Admin",username:"teacher",password:"teacher123",avatar:"T",bio:""},
+      {id:"s1",role:"student",name:"Alex Chen",username:"alex",password:"alex123",avatar:"A",bio:"",points:150,feesPaid:true,enrolledClasses:["c1","c2"]},
+      {id:"s2",role:"student",name:"Bella Wang",username:"bella",password:"bella123",avatar:"B",bio:"",points:0,feesPaid:false,enrolledClasses:["c1"]},
+      {id:"s3",role:"student",name:"Carlos Li",username:"carlos",password:"carlos123",avatar:"C",bio:"",points:85,feesPaid:true,enrolledClasses:["c2","c3"]}
+    ],
+    classes:[
+      {id:"c1",name:"2025高一数学班",desc:"高中数学冲刺",classLink:"https://zoom.us/j/math",linkUpdatedAt:n-3600000,colorIdx:0,monthlyFee:800},
+      {id:"c2",name:"英语口语提升班",desc:"口语与听力专项",classLink:"",linkUpdatedAt:null,colorIdx:1,monthlyFee:600},
+      {id:"c3",name:"高中物理班",desc:"物理实验与理论",classLink:"",linkUpdatedAt:null,colorIdx:2,monthlyFee:700}
+    ],
+    posts:[
+      {id:"p1",classId:"c1",type:"announcement",title:"本周测验通知",content:"周六下午2点第三章测验，请提前复习！",authorId:"t1",createdAt:n-86400000,likes:["s1"],images:[],url:"",fileData:null,fileName:"",materialType:""},
+      {id:"p2",classId:"c1",type:"material",title:"Khan Academy练习",content:"完成指定练习题",url:"https://khanacademy.org/math",materialType:"link",fileData:null,fileName:"",authorId:"t1",createdAt:n-43200000,likes:[],images:[]},
+      {id:"p3",classId:"c1",type:"forum",title:"请问第二题怎么做？",content:"第二题不会，有同学帮忙吗？",authorId:"s1",createdAt:n-20000000,likes:[],images:[],url:"",fileData:null,fileName:"",materialType:""}
+    ],
+    comments:[
+      {id:"cm1",postId:"p1",authorId:"s1",content:"收到！谢谢老师",createdAt:n-80000000},
+      {id:"cm2",postId:"p1",authorId:"t1",content:"加油！",createdAt:n-79000000}
+    ],
+    badges:[
+      {id:"b1",name:"数学达人",desc:"表现突出的数学学员",icon:"star",points:50,classId:"c1"},
+      {id:"b2",name:"英语之星",desc:"英语进步最快",icon:"award",points:40,classId:"c2"},
+      {id:"b3",name:"勤学勤练",desc:"坚持每日学习",icon:"fire",points:30,classId:"c1"}
+    ],
+    studentBadges:[{studentId:"s1",badgeId:"b3",earnedAt:n-86400000}],
+    pointTransactions:[
+      {id:"pt1",studentId:"s1",amount:80,reason:"教师奖励",timestamp:n-172800000},
+      {id:"pt2",studentId:"s1",amount:20,reason:"每日签到",timestamp:n-86400000},
+      {id:"pt3",studentId:"s3",amount:85,reason:"教师奖励",timestamp:n-86400000}
+    ],
+    dailyCheckins:[],dailyAIQ:[],paymentQR:null,checkinPts:10,aiPts:15,linkSeenAt:{},lastFeeReset:curMonth()
+  };
+};
+const loadData=()=>{try{const x=localStorage.getItem(LS);if(x)return JSON.parse(x);}catch{}return mkData();};
+const saveData=(d)=>{try{localStorage.setItem(LS,JSON.stringify(d));}catch{}};
 
-    <!-- 2. Your React code goes inside this specific script tag -->
-    <script type="text/babel">
-        function App() {
+// ─── SVG Icons ─────────────────────────────────────────────
+const SVGP={
+  home:'<path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" stroke="currentColor" stroke-width="2" fill="none"/><polyline points="9 22 9 12 15 12 15 22" stroke="currentColor" stroke-width="2" fill="none"/>',
+  classes:'<rect x="2" y="3" width="20" height="14" rx="2" stroke="currentColor" stroke-width="2" fill="none"/><line x1="8" y1="21" x2="16" y2="21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="12" y1="17" x2="12" y2="21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  students:'<path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/><circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="2" fill="none"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>',
+  points:'<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" stroke="currentColor" stroke-width="2" stroke-linejoin="round" fill="none"/>',
+  badges:'<circle cx="12" cy="8" r="6" stroke="currentColor" stroke-width="2" fill="none"/><path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11" stroke="currentColor" stroke-width="2" stroke-linejoin="round" fill="none"/>',
+  payment:'<rect x="1" y="4" width="22" height="16" rx="2" ry="2" stroke="currentColor" stroke-width="2" fill="none"/><line x1="1" y1="10" x2="23" y2="10" stroke="currentColor" stroke-width="2"/>',
+  settings:'<circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" fill="none"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" stroke="currentColor" stroke-width="2" fill="none"/>',
+  ai:'<path d="M12 2a2 2 0 012 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 017 7h1a1 1 0 010 2h-1v1a2 2 0 01-2 2H5a2 2 0 01-2-2v-1H2a1 1 0 010-2h1a7 7 0 017-7h1V5.73A2 2 0 0110 4a2 2 0 012-2z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" fill="none"/><circle cx="9" cy="13" r="1.5" fill="currentColor"/><circle cx="15" cy="13" r="1.5" fill="currentColor"/>',
+  profile:'<path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/><circle cx="12" cy="7" r="4" stroke="currentColor" stroke-width="2" fill="none"/>',
+  logout:'<path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/><polyline points="16 17 21 12 16 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/><line x1="21" y1="12" x2="9" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  back:'<line x1="19" y1="12" x2="5" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polyline points="12 19 5 12 12 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
+  plus:'<line x1="12" y1="5" x2="12" y2="19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  edit:'<path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
+  trash:'<polyline points="3 6 5 6 21 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
+  search:'<circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="2" fill="none"/><line x1="21" y1="21" x2="16.65" y2="16.65" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  bell:'<path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
+  check:'<polyline points="20 6 9 17 4 12" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
+  calendar:'<rect x="3" y="4" width="18" height="18" rx="2" ry="2" stroke="currentColor" stroke-width="2" fill="none"/><line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" stroke-width="2"/>',
+  camera:'<path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" fill="none"/><circle cx="12" cy="13" r="4" stroke="currentColor" stroke-width="2" fill="none"/>',
+  image:'<rect x="3" y="3" width="18" height="18" rx="2" ry="2" stroke="currentColor" stroke-width="2" fill="none"/><circle cx="8.5" cy="8.5" r="1.5" fill="currentColor"/><polyline points="21 15 16 10 5 21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
+  link:'<path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>',
+  lock:'<rect x="3" y="11" width="18" height="11" rx="2" ry="2" stroke="currentColor" stroke-width="2" fill="none"/><path d="M7 11V7a5 5 0 0110 0v4" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>',
+  eye:'<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" stroke-width="2" fill="none"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" fill="none"/>',
+  eyeoff:'<path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/><line x1="1" y1="1" x2="23" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  award:'<circle cx="12" cy="8" r="6" stroke="currentColor" stroke-width="2" fill="none"/><path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11" stroke="currentColor" stroke-width="2" stroke-linejoin="round" fill="none"/>',
+  fire:'<path d="M8.5 14.5A2.5 2.5 0 0011 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 11-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 002.5 3z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
+  trending:'<polyline points="23 6 13.5 15.5 8.5 10.5 1 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/><polyline points="17 6 23 6 23 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
+  qr:'<rect x="3" y="3" width="7" height="7" stroke="currentColor" stroke-width="2" fill="none"/><rect x="14" y="3" width="7" height="7" stroke="currentColor" stroke-width="2" fill="none"/><rect x="3" y="14" width="7" height="7" stroke="currentColor" stroke-width="2" fill="none"/><rect x="5" y="5" width="3" height="3" fill="currentColor"/><rect x="16" y="5" width="3" height="3" fill="currentColor"/><rect x="5" y="16" width="3" height="3" fill="currentColor"/><path d="M14 14h.01M14 17h3v-3M20 20h.01M17 20v-3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  dollar:'<line x1="12" y1="1" x2="12" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M17 5H9.5a3.5 3.5 0 100 7h5a3.5 3.5 0 110 7H6" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>',
+  star:'<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" stroke="currentColor" stroke-width="2" stroke-linejoin="round" fill="none"/>',
+  lightning:'<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
+  book:'<path d="M4 19.5A2.5 2.5 0 016.5 17H20" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" fill="none"/>',
+  bookmark:'<path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
+  send:'<line x1="22" y1="2" x2="11" y2="13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><polygon points="22 2 15 22 11 13 2 9 22 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
+  close:'<line x1="18" y1="6" x2="6" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  info:'<circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" fill="none"/><line x1="12" y1="8" x2="12" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="12" y1="16" x2="12.01" y2="16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  wifi:'<path d="M5 12.55a11 11 0 0114.08 0" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/><path d="M1.42 9a16 16 0 0121.16 0" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/><path d="M8.53 16.11a6 6 0 016.95 0" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/><circle cx="12" cy="20" r="1" fill="currentColor"/>',
+  sun:'<circle cx="12" cy="12" r="5" stroke="currentColor" stroke-width="2" fill="none"/><line x1="12" y1="1" x2="12" y2="3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="12" y1="21" x2="12" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="1" y1="12" x2="3" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="21" y1="12" x2="23" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  moon:'<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
+  mic:'<path d="M12 1a3 3 0 00-3 3v7a3 3 0 006 0V4a3 3 0 00-3-3z" stroke="currentColor" stroke-width="2" fill="none"/><path d="M19 10v2a7 7 0 01-14 0v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/><line x1="12" y1="19" x2="12" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="8" y1="23" x2="16" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  micoff:'<line x1="1" y1="1" x2="23" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M9 9v3a3 3 0 005.12 2.12M15 9.34V4a3 3 0 00-5.94-.6" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/><path d="M17 16.95A7 7 0 015 12v-2m14 0v2c0 .384-.037.758-.107 1.122" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/><line x1="12" y1="19" x2="12" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="8" y1="23" x2="16" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  cam:'<polygon points="23 7 16 12 23 17 23 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2" stroke="currentColor" stroke-width="2" fill="none"/>',
+  camoff:'<line x1="1" y1="1" x2="23" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M21 21H3a2 2 0 01-2-2V8a2 2 0 012-2h3m3-3h6l2 3h4a2 2 0 012 2v9.34" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
+  screen:'<rect x="2" y="3" width="20" height="14" rx="2" stroke="currentColor" stroke-width="2" fill="none"/><polyline points="8 21 12 17 16 21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/><line x1="12" y1="17" x2="12" y2="21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  hand:'<path d="M18 11V6a2 2 0 00-4 0v0M14 10V4a2 2 0 00-4 0v2M10 10.5V6a2 2 0 00-4 0v8M18 8a2 2 0 114 0v6a8 8 0 01-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 012.83-2.82L7 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
+  endcall:'<path d="M10.68 13.31a16 16 0 003.41 2.6l1.27-1.27a2 2 0 012.11-.45c.927.35 1.897.57 2.89.65A2 2 0 0122 17v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 8.63a2 2 0 012-2.18A2 2 0 015 6.5 14.07 14.07 0 005.65 3.61a2 2 0 01.45-2.11l1.27-1.27a16 16 0 012.6 3.41" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/><line x1="1" y1="1" x2="23" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  upload:'<polyline points="16 16 12 12 8 16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/><line x1="12" y1="12" x2="12" y2="21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
+  chat:'<path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
+  whiteboard:'<rect x="3" y="3" width="18" height="14" rx="2" stroke="currentColor" stroke-width="2" fill="none"/><line x1="8" y1="21" x2="16" y2="21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="12" y1="17" x2="12" y2="21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M7 8h10M7 11h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  people:'<path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/><circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="2" fill="none"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>',
+  signal:'<path d="M1.5 8.5a13 13 0 0121 0" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/><path d="M5 12a10 10 0 0114 0" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/><path d="M8.5 15.5a6 6 0 017 0" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/><circle cx="12" cy="19" r="1.5" fill="currentColor"/>',
+  unlock:'<rect x="3" y="11" width="18" height="11" rx="2" ry="2" stroke="currentColor" stroke-width="2" fill="none"/><path d="M7 11V7a5 5 0 019.9-1" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>',
+  savebookmark:'<path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
+  endcall2:'<path d="M10.68 13.31a16 16 0 003.41 2.6l1.27-1.27a2 2 0 012.11-.45c.927.35 1.897.57 2.89.65A2 2 0 0122 17v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 8.63a2 2 0 012-2.18A2 2 0 015 6.5 14.07 14.07 0 005.65 3.61a2 2 0 01.45-2.11l1.27-1.27a16 16 0 012.6 3.41" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/><line x1="1" y1="1" x2="23" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'
+};
+function Ico({n,size,color}){
+  const p=SVGP[n]||SVGP.info;
+  return (
+    <svg width={size||18} height={size||18} viewBox="0 0 24 24" style={{display:"block",flexShrink:0,color:color||"currentColor"}} dangerouslySetInnerHTML={{__html:p}}/>
+  );
+}
+
+
+
+function ConfirmDlg({msg,onOk,onNo}){
+  const {theme,lang}=useApp();
+  const dk=theme==="dark";
+  const L=lang==="en";
+  return (
+    <div onClick={function(e){if(e.target===e.currentTarget)onNo();}} style={{position:"fixed",inset:0,zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:16,background:"rgba(0,0,0,.6)",backdropFilter:"blur(8px)"}}>
+      <div style={{background:dk?"#1e293b":"#fff",borderRadius:20,padding:"28px 24px",maxWidth:340,width:"100%",boxShadow:"0 24px 60px rgba(0,0,0,.4)",animation:"mPop .2s ease",textAlign:"center"}}>
+        <div style={{width:52,height:52,borderRadius:"50%",background:"rgba(239,68,68,.1)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 14px"}}>
+          <Ico n="info" size={24} color="#ef4444"/>
+        </div>
+        <p style={{fontSize:14,color:dk?"#94a3b8":"#64748b",lineHeight:1.6,marginBottom:22}}>{msg}</p>
+        <div style={{display:"flex",gap:10}}>
+          <button onClick={onNo} style={{flex:1,padding:"11px",borderRadius:10,border:"1.5px solid #FFB800",background:"transparent",color:"#FFB800",fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:14}}>{L?"Cancel":"取消"}</button>
+          <button onClick={onOk} style={{flex:1,padding:"11px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#ef4444,#f97316)",color:"#fff",fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:14}}>{L?"Confirm":"确定"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Toast({msg,type,onClose}){
+  const bg={success:"#22c55e",error:"#ef4444",warn:"#f59e0b",info:"#FFB800"}[type]||"#22c55e";
+  useEffect(()=>{const t=setTimeout(onClose,3000);return()=>clearTimeout(t);},[]);
+  return <div style={{position:"fixed",bottom:90,left:"50%",transform:"translateX(-50%)",background:bg,color:"#fff",padding:"10px 22px",borderRadius:50,zIndex:99999,fontWeight:700,fontSize:13,boxShadow:"0 8px 24px rgba(0,0,0,.3)",animation:"tUp .25s ease",whiteSpace:"nowrap",maxWidth:"85vw",textAlign:"center"}}>{msg}</div>;
+}
+
+
+function Modal({open,title,onClose,children,wide}){
+  const {theme}=useApp();const dk=theme==="dark";
+  if(!open)return null;
+  return <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{position:"fixed",inset:0,zIndex:9000,display:"flex",alignItems:"center",justifyContent:"center",padding:16,background:"rgba(0,0,0,.55)",backdropFilter:"blur(8px)"}}>
+    <div style={{width:"100%",maxWidth:wide?600:440,maxHeight:"92vh",overflowY:"auto",background:dk?"#1e293b":"#fff",borderRadius:22,padding:26,boxShadow:"0 24px 60px rgba(0,0,0,.35)",animation:"mPop .2s ease"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
+        <h3 style={{margin:0,fontSize:16,fontWeight:700,color:dk?"#f1f5f9":"#0f172a"}}>{title}</h3>
+        <button onClick={onClose} style={{background:dk?"rgba(255,255,255,.08)":"rgba(0,0,0,.06)",border:"none",width:28,height:28,borderRadius:"50%",cursor:"pointer",fontSize:13,color:dk?"#94a3b8":"#64748b"}}> ✕</button>
+      </div>
+      {children}
+    </div>
+  </div>;
+}
+
+
+function Inp({label,value,onChange,type,placeholder,min}){
+  const {theme}=useApp();const dk=theme==="dark";
+  const [focused,setFocused]=useState(false);
+  const bc=focused?"#FFB800":dk?"rgba(255,255,255,.1)":"rgba(0,0,0,.1)";
+  return <div style={{marginBottom:14}}>
+    {label&&<div style={{fontSize:11,fontWeight:700,marginBottom:5,textTransform:"uppercase",letterSpacing:.5,color:dk?"#64748b":"#94a3b8"}}>{label}</div>}
+    <input type={type||"text"} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} min={min}
+      onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)}
+      style={{width:"100%",padding:"11px 14px",borderRadius:11,border:"1.5px solid "+bc,background:dk?"rgba(255,255,255,.05)":"rgba(0,0,0,.02)",color:dk?"#f1f5f9":"#0f172a",fontSize:14,outline:"none",boxSizing:"border-box",fontFamily:"inherit",transition:"border .2s"}}/>
+  </div>;
+}
+
+
+function Txt({label,value,onChange,rows,placeholder}){
+  const {theme}=useApp();const dk=theme==="dark";
+  const [focused,setFocused]=useState(false);
+  const bc=focused?"#FFB800":dk?"rgba(255,255,255,.1)":"rgba(0,0,0,.1)";
+  return <div style={{marginBottom:14}}>
+    {label&&<div style={{fontSize:11,fontWeight:700,marginBottom:5,textTransform:"uppercase",letterSpacing:.5,color:dk?"#64748b":"#94a3b8"}}>{label}</div>}
+    <textarea value={value} onChange={e=>onChange(e.target.value)} rows={rows||3} placeholder={placeholder} onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)}
+      style={{width:"100%",padding:"11px 14px",borderRadius:11,border:"1.5px solid "+bc,background:dk?"rgba(255,255,255,.05)":"rgba(0,0,0,.02)",color:dk?"#f1f5f9":"#0f172a",fontSize:14,outline:"none",resize:"vertical",boxSizing:"border-box",fontFamily:"inherit",transition:"border .2s"}}/>
+  </div>;
+}
+
+
+function Sel({label,value,onChange,options}){
+  const {theme}=useApp();const dk=theme==="dark";
+  return <div style={{marginBottom:14}}>
+    {label&&<div style={{fontSize:11,fontWeight:700,marginBottom:5,textTransform:"uppercase",letterSpacing:.5,color:dk?"#64748b":"#94a3b8"}}>{label}</div>}
+    <select value={value} onChange={e=>onChange(e.target.value)} style={{width:"100%",padding:"11px 14px",borderRadius:11,border:"1.5px solid "+(dk?"rgba(255,255,255,.1)":"rgba(0,0,0,.1)"),background:dk?"#1e293b":"#fff",color:dk?"#f1f5f9":"#0f172a",fontSize:14,outline:"none",cursor:"pointer",boxSizing:"border-box",fontFamily:"inherit"}}>
+      {options.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
+  </div>;
+}
+
+
+function Btn({children,onClick,v,size,disabled,fw,style}){
+  const V=v||"primary";const S=size||"md";
+  const BG={primary:"linear-gradient(135deg,#FFB800,#FF8C00)",danger:"linear-gradient(135deg,#ef4444,#f97316)",success:"linear-gradient(135deg,#10b981,#059669)",ghost:"transparent",soft:"rgba(255,184,0,.15)",white:"rgba(255,255,255,.15)"};
+  const FG={primary:"#fff",danger:"#fff",success:"#fff",ghost:"#FFB800",soft:"#FFB800",white:"#fff"};
+  const BD={ghost:"1.5px solid #FFB800",white:"1.5px solid rgba(255,255,255,.4)"};
+  const PD={sm:"6px 12px",md:"10px 20px",lg:"13px 28px"};
+  return <button onClick={onClick} disabled={disabled} style={{background:BG[V]||BG.primary,color:FG[V]||"#fff",border:BD[V]||"none",padding:PD[S]||PD.md,borderRadius:10,cursor:disabled?"not-allowed":"pointer",fontSize:S==="sm"?12:14,fontWeight:700,opacity:disabled?.5:1,transition:"all .15s",width:fw?"100%":undefined,fontFamily:"inherit",...style}}
+    onMouseEnter={e=>{if(!disabled){e.currentTarget.style.opacity=".88";e.currentTarget.style.transform="translateY(-1px)";}}}
+    onMouseLeave={e=>{e.currentTarget.style.opacity="1";e.currentTarget.style.transform="";}}>
+    {children}
+  </button>;
+}
+
+
+function Card({children,style,onClick}){
+  const {theme}=useApp();const dk=theme==="dark";
+  return <div onClick={onClick} style={{background:dk?"#1e293b":"#fff",borderRadius:16,padding:18,boxShadow:dk?"0 2px 12px rgba(0,0,0,.25)":"0 2px 10px rgba(0,0,0,.06)",border:"1px solid "+(dk?"rgba(255,255,255,.05)":"rgba(0,0,0,.04)"),cursor:onClick?"pointer":"default",transition:"transform .15s,box-shadow .15s",...style}}
+    onMouseEnter={e=>{if(onClick){e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow=dk?"0 8px 24px rgba(0,0,0,.35)":"0 8px 20px rgba(0,0,0,.1)";}}}
+    onMouseLeave={e=>{if(onClick){e.currentTarget.style.transform="";e.currentTarget.style.boxShadow=dk?"0 2px 12px rgba(0,0,0,.25)":"0 2px 10px rgba(0,0,0,.06)";}}}>
+    {children}
+  </div>;
+}
+
+
+function Pill({children,color}){
+  const M={indigo:{bg:"rgba(255,184,0,.18)",fg:"#FFB800"},green:{bg:"rgba(34,197,94,.15)",fg:"#16a34a"},red:{bg:"rgba(239,68,68,.15)",fg:"#ef4444"},amber:{bg:"rgba(245,158,11,.15)",fg:"#d97706"},blue:{bg:"rgba(59,130,246,.15)",fg:"#2563eb"},purple:{bg:"rgba(139,92,246,.15)",fg:"#7c3aed"}};
+  const p=M[color||"indigo"]||M.indigo;
+  return <span style={{background:p.bg,color:p.fg,padding:"3px 9px",borderRadius:50,fontSize:11,fontWeight:700,display:"inline-block"}}>{children}</span>;
+}
+
+// ─ Post Card ─
+
+
+function PostCard({post,isTeacher,userId,onDelete,show}){
+  const {theme,lang,data,setData}=useApp();
+  const dk=theme==="dark"; const tc=dk?"#f1f5f9":"#0f172a"; const sc=dk?"#64748b":"#94a3b8";
+  const L=lang==="en";
+  const [showCmts,setShowCmts]=useState(false);
+  const [cmtTxt,setCmtTxt]=useState("");
+  const [lightbox,setLightbox]=useState(null);
+  const [cfDelCmt,setCfDelCmt]=useState(null);
+  const [showPdf,setShowPdf]=useState(false);
+  const author=data.users.find(u=>u.id===post.authorId);
+  const cmts=data.comments.filter(c=>c.postId===post.id).sort((a,b)=>a.createdAt-b.createdAt);
+  const uid=userId||"t1";
+  const liked=(post.likes||[]).includes(uid);
+  const typeLbl={material:L?"📎 Material":"📎 教材",announcement:L?"📢 Notice":"📢 通告",forum:L?"💬 Forum":"💬 论坛"};
+  const typePill={material:"blue",announcement:"amber",forum:"indigo"};
+  const toggleLike=()=>setData({...data,posts:data.posts.map(p=>p.id!==post.id?p:{...p,likes:liked?(p.likes||[]).filter(x=>x!==uid):[...(p.likes||[]),uid]})});
+  const addCmt=()=>{if(!cmtTxt.trim())return;setData({...data,comments:[...data.comments,{id:gid(),postId:post.id,authorId:uid,content:cmtTxt.trim(),createdAt:Date.now()}]});setCmtTxt("");};
+  const delCmt=(id)=>{setData({...data,comments:data.comments.filter(c=>c.id!==id)});setCfDelCmt(null);};
+  // Determine media type
+  const isImgFile=post.fileData&&post.materialType==="image";
+  const isPdf=post.fileData&&post.materialType==="pdf";
+  const hasLink=post.url&&post.url.trim();
+  const isVideoUrl=post.materialType==="video"&&hasLink;
+  return (
+    <Card style={{padding:"16px 18px",marginBottom:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+        <div style={{display:"flex",gap:10,alignItems:"center"}}>
+          <div style={{width:38,height:38,borderRadius:12,background:"linear-gradient(135deg,#FFB800,#FF8C00)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>{author?.avatar||"👤"}</div>
+          <div>
+            <div style={{fontWeight:700,fontSize:13,color:tc}}>{author?.name||"?"}</div>
+            <div style={{fontSize:11,color:sc}}>{new Date(post.createdAt).toLocaleString()}</div>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:6,alignItems:"center"}}>
+          <Pill color={typePill[post.type]||"indigo"}>{typeLbl[post.type]||post.type}</Pill>
+          {isTeacher&&<button onClick={onDelete} style={{background:"rgba(239,68,68,.1)",border:"none",color:"#ef4444",padding:"3px 8px",borderRadius:7,cursor:"pointer",fontSize:12,fontWeight:700}}>🗑</button>}
+        </div>
+      </div>
+      {post.title&&<div style={{fontWeight:700,fontSize:15,color:tc,marginBottom:6}}>{post.title}</div>}
+      {post.content&&<div style={{fontSize:13,color:dk?"#cbd5e1":"#374151",lineHeight:1.7,marginBottom:10,whiteSpace:"pre-wrap"}}>{post.content}</div>}
+
+      {/* Uploaded image — show inline */}
+      {isImgFile&&(
+        <div style={{marginBottom:10}}>
+          <img src={post.fileData} alt={post.fileName} onClick={()=>setLightbox(post.fileData)}
+            style={{width:"100%",maxHeight:320,objectFit:"cover",borderRadius:12,cursor:"zoom-in",display:"block",border:"1px solid "+(dk?"rgba(255,255,255,.08)":"rgba(0,0,0,.06)")}}/>
+          <div style={{fontSize:11,color:sc,marginTop:4}}>📎 {post.fileName}</div>
+        </div>
+      )}
+
+      {/* Forum images array */}
+      {post.images&&post.images.length>0&&(
+        <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:10}}>
+          {post.images.map((img,i)=>(
+            <img key={i} src={img} alt="" onClick={()=>setLightbox(img)}
+              style={{width:post.images.length===1?"100%":"calc(50% - 4px)",maxHeight:post.images.length===1?300:160,objectFit:"cover",borderRadius:10,cursor:"zoom-in",display:"block"}}/>
+          ))}
+        </div>
+      )}
+
+      {/* PDF — inline viewer or download */}
+      {isPdf&&(
+        <div style={{marginBottom:10}}>
+          <div style={{background:dk?"rgba(239,68,68,.1)":"rgba(239,68,68,.06)",borderRadius:12,padding:"12px 14px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:28}}>📄</span>
+              <div>
+                <div style={{fontWeight:700,fontSize:13,color:tc}}>{post.fileName}</div>
+                <div style={{fontSize:11,color:sc}}>{lang==="en"?"PDF File":"PDF 文件"}</div>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:6}}>
+              <Btn v="soft" size="sm" onClick={()=>setShowPdf(v=>!v)}>{showPdf?(L?"Hide":"收起"):(L?"Preview":"预览")}</Btn>
+              <Btn v="primary" size="sm" onClick={()=>{const a=document.createElement("a");a.href=post.fileData;a.download=post.fileName;a.click();}}>{L?"Download":"下载"}</Btn>
+            </div>
+          </div>
+          {showPdf&&(
+            <embed src={post.fileData} type="application/pdf" style={{width:"100%",height:420,borderRadius:"0 0 12px 12px",border:"none",display:"block"}}/>
+          )}
+        </div>
+      )}
+
+      {/* Video URL */}
+      {isVideoUrl&&(
+        <div style={{marginBottom:10,background:dk?"rgba(255,184,0,.12)":"rgba(255,184,0,.08)",borderRadius:12,padding:"10px 14px",display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:24}}>🎬</span>
+          <div style={{flex:1,overflow:"hidden"}}>
+            <div style={{fontWeight:600,fontSize:13,color:tc,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{post.url}</div>
+          </div>
+          <Btn v="primary" size="sm" onClick={()=>window.open(post.url,"_blank")}>{L?"Open":"打开"}</Btn>
+        </div>
+      )}
+
+      {/* Link / other URL */}
+      {hasLink&&!isVideoUrl&&(
+        <div style={{marginBottom:10,background:dk?"rgba(255,184,0,.12)":"rgba(255,184,0,.08)",borderRadius:12,padding:"10px 14px",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+          <span style={{fontSize:18}}>🔗</span>
+          <span style={{flex:1,fontSize:12,color:"#FFB800",wordBreak:"break-all"}}>{post.url}</span>
+          <Btn v="primary" size="sm" onClick={()=>window.open(post.url,"_blank")}>{L?"Open":"打开"}</Btn>
+        </div>
+      )}
+
+      <div style={{display:"flex",gap:14,alignItems:"center",paddingTop:10,borderTop:"1px solid "+(dk?"rgba(255,255,255,.06)":"rgba(0,0,0,.06)")}}>
+        <button onClick={toggleLike} style={{background:"none",border:"none",cursor:"pointer",color:liked?"#ef4444":sc,fontSize:13,fontWeight:700,display:"flex",gap:4,alignItems:"center"}}>{liked?"❤️":"🤍"} {(post.likes||[]).length}</button>
+        <button onClick={()=>setShowCmts(v=>!v)} style={{background:"none",border:"none",cursor:"pointer",color:sc,fontSize:13,fontWeight:600,display:"flex",gap:4,alignItems:"center"}}>💬 {cmts.length} {L?"comments":"评论"}</button>
+      </div>
+      {showCmts&&(
+        <div style={{marginTop:12}}>
+          {cmts.map(c=>{
+            const cu=data.users.find(u=>u.id===c.authorId);
             return (
-                <div style={{padding: '20px', textAlign: 'center'}}>
-                    <h1 style={{color: '#FFB800'}}>tutorhub</h1>
-                    <p>Your app is now connected!</p>
+              <div key={c.id} style={{display:"flex",gap:8,marginBottom:8,alignItems:"flex-start"}}>
+                <span style={{fontSize:18,flexShrink:0}}>{cu?.avatar||"👤"}</span>
+                <div style={{flex:1,background:dk?"rgba(255,255,255,.04)":"rgba(0,0,0,.03)",borderRadius:9,padding:"7px 11px"}}>
+                  <div style={{fontWeight:700,fontSize:12,color:tc,marginBottom:2}}>{cu?.name}</div>
+                  <div style={{fontSize:13,color:tc,lineHeight:1.5}}>{c.content}</div>
                 </div>
+                {(isTeacher||c.authorId===uid)&&<button onClick={()=>setCfDelCmt(c.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ef4444",fontSize:12}}>✕</button>}
+              </div>
             );
-        }
+          })}
+          <div style={{display:"flex",gap:8,marginTop:8}}>
+            <input value={cmtTxt} onChange={e=>setCmtTxt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&!e.shiftKey&&(e.preventDefault(),addCmt())}
+              placeholder={L?"Add a comment...":"发表评论..."}
+              style={{flex:1,padding:"9px 13px",borderRadius:50,border:"1.5px solid "+(dk?"rgba(255,255,255,.1)":"rgba(0,0,0,.1)"),background:dk?"rgba(255,255,255,.04)":"rgba(0,0,0,.02)",color:tc,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
+            <Btn v="soft" size="sm" onClick={addCmt}>{L?"Post":"评论"}</Btn>
+          </div>
+        </div>
+      )}
+      {cfDelCmt&&<ConfirmDlg msg={L?"Delete comment?":"删除评论？"} onOk={()=>delCmt(cfDelCmt)} onNo={()=>setCfDelCmt(null)}/>}
+      {lightbox&&(
+        <div onClick={()=>setLightbox(null)} style={{position:"fixed",inset:0,zIndex:98000,background:"rgba(0,0,0,.9)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"zoom-out"}}>
+          <img src={lightbox} style={{maxWidth:"94vw",maxHeight:"90vh",borderRadius:10,objectFit:"contain"}} onClick={e=>e.stopPropagation()}/>
+        </div>
+      )}
+    </Card>
+  );
+}
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-    </script>
+// ─ Meeting SVG Icons ─────────────────────────────────────
+
+
+
+function LoginPage({onLogin}){
+  const {lang,setLang,theme,data}=useApp();
+  const dk=theme==="dark";
+  const tc=dk?"#f1f5f9":"#0f172a";
+  const [u,setU]=useState("");
+  const [p,setP]=useState("");
+  const [err,setErr]=useState("");
+  const L=lang==="en";
+  const tryLogin=()=>{
+    if(!u.trim()||!p.trim()){setErr(L?"Please enter your credentials":"请输入账号和密码");return;}
+    const user=data.users.find(x=>x.username===u.trim()&&x.password===p);
+    if(!user){setErr(L?"Incorrect username or password, please try again":"账号或密码错误，请重试");return;}
+    onLogin(user);
+  };
+  return (
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:20,background:dk?"linear-gradient(135deg,#070b14,#0f172a)":"linear-gradient(135deg,#eef2ff,#f8f4ff)"}}>
+      <div style={{width:"100%",maxWidth:400}}>
+        <div style={{textAlign:"center",marginBottom:28}}>
+          <div style={{width:72,height:72,margin:"0 auto 16px",borderRadius:22,background:"linear-gradient(135deg,#FFB800,#FF8C00)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,boxShadow:"0 16px 48px rgba(99,102,241,.5)"}}>🎓</div>
+          <h1 style={{margin:"0 0 6px",fontSize:26,fontWeight:800,color:tc}}>TutorHub</h1>
+          <p style={{margin:0,fontSize:14,color:dk?"#475569":"#94a3b8"}}>{L?"Tutoring Management System":"补习学习管理系统"}</p>
+        </div>
+        <Card style={{padding:30}}>
+          {err&&(
+            <div style={{background:"rgba(239,68,68,.08)",border:"1.5px solid rgba(239,68,68,.3)",borderRadius:12,padding:"11px 14px",marginBottom:16,color:"#ef4444",fontSize:13,fontWeight:600,display:"flex",alignItems:"center",gap:9}}>
+              <span>⚠️</span><span>{err}</span>
+            </div>
+          )}
+          <div style={{marginBottom:14}}>
+            <div style={{fontSize:11,fontWeight:700,marginBottom:6,textTransform:"uppercase",letterSpacing:.5,color:dk?"#64748b":"#94a3b8"}}>{L?"Username":"账号"}</div>
+            <input value={u} onChange={e=>{setU(e.target.value);setErr("");}} onKeyDown={e=>e.key==="Enter"&&tryLogin()}
+              style={{width:"100%",padding:"12px 14px",borderRadius:11,border:"1.5px solid "+(dk?"rgba(255,255,255,.1)":"rgba(0,0,0,.1)"),background:dk?"rgba(255,255,255,.05)":"rgba(0,0,0,.02)",color:tc,fontSize:14,outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
+          </div>
+          <div style={{marginBottom:18}}>
+            <div style={{fontSize:11,fontWeight:700,marginBottom:6,textTransform:"uppercase",letterSpacing:.5,color:dk?"#64748b":"#94a3b8"}}>{L?"Password":"密码"}</div>
+            <input type="password" value={p} onChange={e=>{setP(e.target.value);setErr("");}} onKeyDown={e=>e.key==="Enter"&&tryLogin()}
+              style={{width:"100%",padding:"12px 14px",borderRadius:11,border:"1.5px solid "+(dk?"rgba(255,255,255,.1)":"rgba(0,0,0,.1)"),background:dk?"rgba(255,255,255,.05)":"rgba(0,0,0,.02)",color:tc,fontSize:14,outline:"none",boxSizing:"border-box",fontFamily:"inherit"}}/>
+          </div>
+          <button onClick={tryLogin} style={{width:"100%",padding:"14px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#FFB800,#FF8C00)",color:"#fff",fontSize:15,fontWeight:700,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 14px rgba(99,102,241,.4)"}}>
+            {L?"Sign In":"登录"}
+          </button>
+          <div style={{marginTop:16,paddingTop:14,borderTop:"1px solid "+(dk?"rgba(255,255,255,.07)":"rgba(0,0,0,.06)"),display:"flex",justifyContent:"center",gap:8}}>
+            {[["zh","中文"],["en","English"]].map(([l,lb])=>(
+              <button key={l} onClick={()=>setLang(l)} style={{padding:"7px 20px",borderRadius:50,border:"1.5px solid "+(l===lang?"#FFB800":"rgba(0,0,0,.12)"),background:l===lang?"rgba(255,184,0,.15)":"transparent",color:l===lang?"#FFB800":dk?"#64748b":"#94a3b8",fontWeight:l===lang?700:500,fontSize:13,cursor:"pointer",fontFamily:"inherit",transition:"all .2s"}}>
+                {lb}
+              </button>
+            ))}
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+
+function LockedPage({user,onLogout}){
+  const {theme,data}=useApp();const dk=theme==="dark";
+  const fees=(user.enrolledClasses||[]).map(cid=>{const cl=data.classes.find(c=>c.id===cid);return cl?{name:cl.name,fee:cl.monthlyFee||0}:null;}).filter(Boolean);
+  const total=fees.reduce((s,f)=>s+f.fee,0);
+  return <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:20,background:dk?"linear-gradient(135deg,#070b14,#1a0510)":"linear-gradient(135deg,#fff7f7,#fce7f3)"}}>
+    <Card style={{maxWidth:400,width:"100%",textAlign:"center",padding:"36px 28px"}}>
+      <div style={{width:64,height:64,margin:"0 auto 16px",borderRadius:"50%",background:"linear-gradient(135deg,#ef4444,#f97316)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:30}}>🔒</div>
+      <h2 style={{margin:"0 0 8px",fontSize:20,fontWeight:800,color:"#ef4444"}}>lang==="en"?"Account Locked":"账户已锁定"</h2>
+      <p style={{color:dk?"#94a3b8":"#64748b",fontSize:13,lineHeight:1.7,marginBottom:20}}>学费未缴，请扫码支付后联系老师解锁</p>
+      {fees.length>0&&<div style={{background:dk?"rgba(255,255,255,.04)":"rgba(0,0,0,.03)",borderRadius:12,padding:"14px 16px",marginBottom:20,textAlign:"left"}}>
+        <div style={{fontSize:11,fontWeight:700,color:dk?"#64748b":"#94a3b8",marginBottom:10,textTransform:"uppercase",letterSpacing:.5}}>💰 月费明细</div>
+        {fees.map((f,i)=><div key={i} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:i<fees.length-1?"1px solid "+(dk?"rgba(255,255,255,.04)":"rgba(0,0,0,.05)"):"none"}}>
+          <span style={{fontSize:13,color:dk?"#e2e8f0":"#374151"}}>{f.name}</span>
+          <span style={{fontWeight:700,color:"#FFB800"}}>¥{f.fee}</span>
+        </div>)}
+        <div style={{display:"flex",justifyContent:"space-between",marginTop:10,paddingTop:10,borderTop:"2px solid "+(dk?"rgba(255,255,255,.1)":"rgba(0,0,0,.08)")}}>
+          <span style={{fontWeight:800,color:dk?"#f1f5f9":"#0f172a"}}>合计</span>
+          <span style={{fontWeight:800,fontSize:18,color:"#ef4444"}}>¥{total}</span>
+        </div>
+      </div>}
+      {data.paymentQR?<img src={data.paymentQR} alt="QR" style={{width:180,height:180,borderRadius:14,margin:"0 auto 20px",display:"block",objectFit:"cover"}}/>:<div style={{width:180,height:180,margin:"0 auto 20px",borderRadius:14,background:dk?"#1e293b":"#f1f5f9",display:"flex",alignItems:"center",justifyContent:"center",fontSize:60}}></div>}
+      <Btn v="ghost" fw onClick={onLogout}>退出登录</Btn>
+    </Card>
+  </div>;
+}
+
+// ─ TEACHER PORTAL ─
+
+
+function TeacherPortal({user,onLogout}){
+  const {theme,data}=useApp();
+  const dk=theme==="dark";
+  const [page,setPage]=useState("classes");
+  const [toast,setToast]=useState(null);
+  const show=(msg,type)=>setToast({msg,type:type||"success"});
+  const tc=dk?"#f1f5f9":"#0f172a"; const sc=dk?"#64748b":"#94a3b8";
+  const sb=dk?"#111827":"#fff"; const bd=dk?"rgba(255,255,255,.05)":"rgba(0,0,0,.05)";
+  const isClass=page.startsWith("cls:");
+  const classId=isClass?page.split(":")[1]:null;
+  const cls=classId?data.classes.find(cl=>cl.id===classId):null;
+  const NAV=[
+    {id:"classes",  ico:"classes",  lb:"班级"},
+    {id:"students", ico:"students", lb:"学员"},
+    {id:"points",   ico:"points",   lb:"积分"},
+    {id:"badges",   ico:"badges",   lb:"徽章"},
+    {id:"payment",  ico:"qr",       lb:"收款"},
+    {id:"settings", ico:"settings", lb:"设置"}
+  ];
+  const activeNav=isClass?"classes":page;
+  const [isMob,setIsMob]=useState(window.innerWidth<768);
+  useEffect(()=>{const h=()=>setIsMob(window.innerWidth<768);window.addEventListener("resize",h);return()=>window.removeEventListener("resize",h);},[]);
+  return (
+    <div style={{display:"flex",height:"100vh",overflow:"hidden",background:dk?"#111111":"#F8F5EE"}}>
+      {!isMob&&(
+        <div style={{width:196,minWidth:196,background:sb,borderRight:"1px solid "+bd,display:"flex",flexDirection:"column",flexShrink:0}}>
+          <div style={{padding:"16px 16px 14px",display:"flex",alignItems:"center",gap:10,borderBottom:"1px solid "+bd}}>
+            <div style={{width:32,height:32,borderRadius:10,background:"linear-gradient(135deg,#FFB800,#FF8C00)",display:"flex",alignItems:"center",justifyContent:"center"}}><Ico n="book" size={16} color="#fff"/></div>
+            <span style={{fontWeight:800,fontSize:14,color:tc}}>TutorHub</span>
+          </div>
+          <nav style={{flex:1,padding:"8px 8px",overflowY:"auto"}}>
+            {NAV.map(n=>{const a=activeNav===n.id;return <button key={n.id} onClick={()=>setPage(n.id)} style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:10,border:"none",cursor:"pointer",textAlign:"left",marginBottom:2,fontFamily:"inherit",background:a?"linear-gradient(135deg,#FFB800,#FF8C00)":"transparent",color:a?"#fff":sc,fontWeight:a?600:400,fontSize:13,transition:"all .15s"}}>
+              <Ico n={n.ico} size={16} color={a?"#fff":sc}/>
+              <span>{n.lb}</span>
+            </button>;})}
+          </nav>
+          <div style={{padding:"8px 8px",borderTop:"1px solid "+bd}}>
+            <button onClick={onLogout} style={{width:"100%",display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:10,border:"none",cursor:"pointer",background:"transparent",color:"#ef4444",fontSize:13,fontWeight:600,fontFamily:"inherit"}}>
+              <Ico n="logout" size={16} color="#ef4444"/>
+              <span>退出登录</span>
+            </button>
+          </div>
+        </div>
+      )}
+      <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",minWidth:0}}>
+        <div style={{background:sb,borderBottom:"1px solid "+bd,padding:isMob?"10px 14px":"10px 20px",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+          {isMob&&<div style={{width:28,height:28,borderRadius:8,background:"linear-gradient(135deg,#FFB800,#FF8C00)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Ico n="book" size={14} color="#fff"/></div>}
+          {isClass&&<button onClick={()=>setPage("classes")} style={{background:"rgba(255,184,0,.12)",border:"none",cursor:"pointer",padding:"6px 12px",borderRadius:50,fontFamily:"inherit",display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+            <Ico n="back" size={14} color="#FFB800"/><span style={{fontSize:13,fontWeight:700,color:"#FFB800"}}>返回</span>
+          </button>}
+          <span style={{fontWeight:800,fontSize:isMob?14:15,color:tc,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>
+            {isClass?(cls?.name||""):(NAV.find(n=>n.id===page)?.lb||"")}
+          </span>
+          <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+            {!isMob&&<span style={{fontWeight:600,fontSize:13,color:sc}}>{user.name}</span>}
+            <div style={{width:32,height:32,borderRadius:"50%",background:"linear-gradient(135deg,#FFB800,#FF8C00)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:17}}>{user.avatar}</div>
+          </div>
+        </div>
+        <div style={{flex:1,overflowY:"auto",padding:isMob?"12px 12px 80px":"20px"}}>
+          {page==="classes"&&<TClasses onEnter={id=>setPage("cls:"+id)} show={show}/>}
+          {isClass&&<TClassroom classId={classId} show={show}/>}
+          {page==="students"&&<TStudents show={show}/>}
+          {page==="points"&&<TPoints/>}
+          {page==="badges"&&<TBadgesPage/>}
+          {page==="payment"&&<TQR show={show}/>}
+          {page==="settings"&&<TSettings show={show} user={user}/>}
+        </div>
+      </div>
+      {isMob&&(
+        <div style={{position:"fixed",bottom:0,left:0,right:0,background:sb,borderTop:"1px solid "+bd,display:"flex",zIndex:100,paddingBottom:"env(safe-area-inset-bottom,0px)"}}>
+          {NAV.map(n=>{const a=activeNav===n.id;return <button key={n.id} onClick={()=>setPage(n.id)} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:"8px 2px 6px",border:"none",background:"transparent",cursor:"pointer",fontFamily:"inherit",position:"relative"}}>
+            {a&&<div style={{position:"absolute",top:0,left:"50%",transform:"translateX(-50%)",width:22,height:2.5,borderRadius:2,background:"#FFB800"}}/>}
+            <Ico n={n.ico} size={20} color={a?"#FFB800":sc}/>
+            <span style={{fontSize:9,fontWeight:a?700:400,color:a?"#FFB800":sc,marginTop:1}}>{n.lb}</span>
+          </button>;})}
+        </div>
+      )}
+      {toast&&<Toast msg={toast.msg} type={toast.type} onClose={()=>setToast(null)}/>}
+    </div>
+  );
+}
+
+
+function TClasses({onEnter,show}){
+  const {theme,data,setData}=useApp();const dk=theme==="dark";const tc=dk?"#f1f5f9":"#0f172a";const sc=dk?"#64748b":"#94a3b8";
+  const [modal,setModal]=useState(false);const [form,setForm]=useState({name:"",desc:""});const [cfDel,setCfDel]=useState(null);
+  const save=()=>{if(!form.name.trim())return;setData({...data,classes:[...data.classes,{id:gid(),name:form.name.trim(),desc:form.desc.trim(),classLink:"",linkUpdatedAt:null,colorIdx:data.classes.length%16,monthlyFee:0}]});setModal(false);setForm({name:"",desc:""});show("班级已创建");};
+  const del=(id)=>{setData({...data,classes:data.classes.filter(c=>c.id!==id),posts:data.posts.filter(p=>p.classId!==id),badges:data.badges.filter(b=>b.classId!==id)});setCfDel(null);show("已删除","warn");};
+  const students=data.users.filter(u=>u.role==="student");
+  return <div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))",gap:10,marginBottom:20}}>
+      {[{l:"班级数",v:data.classes.length,c:"#FFB800"},{l:"学员数",v:students.length,c:"#E5A500"},{l:"未缴费",v:students.filter(s=>!s.feesPaid).length,c:"#ef4444"}].map(s=><Card key={s.l} style={{padding:14}}>
+        <div style={{fontSize:28,fontWeight:800,color:s.c}}>{s.v}</div>
+        <div style={{fontSize:12,color:sc,marginTop:3}}>{s.l}</div>
+      </Card>)}
+    </div>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+      <h3 style={{margin:0,fontSize:16,fontWeight:800,color:tc}}>{lang==="en"?"All Classes":"所有班级"}</h3>
+      <Btn onClick={()=>{setForm({name:"",desc:""});setModal(true);}}>新建班级</Btn>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(270px,1fr))",gap:14}}>
+      {data.classes.map((cls,i)=>{const pal=palOf(cls,i);const enrolled=data.users.filter(u=>(u.enrolledClasses||[]).includes(cls.id)).length;const posts=data.posts.filter(p=>p.classId===cls.id).length;
+        return <div key={cls.id} style={{borderRadius:16,overflow:"hidden",boxShadow:dk?"0 4px 16px rgba(0,0,0,.25)":"0 4px 14px rgba(0,0,0,.08)"}}>
+          <div style={{background:"linear-gradient(135deg,"+pal[0]+","+pal[1]+")",padding:"20px 18px 16px",cursor:"pointer"}} onClick={()=>onEnter(cls.id)}>
+            <div style={{fontSize:28,marginBottom:8}}>🏫</div>
+            <div style={{fontWeight:800,fontSize:15,color:"#fff",marginBottom:3}}>{cls.name}</div>
+            {cls.desc&&<div style={{fontSize:12,color:"rgba(255,255,255,.75)"}}>{cls.desc}</div>}
+          </div>
+          <div style={{background:dk?"#1e293b":"#fff",padding:"12px 16px"}}>
+            <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
+              <Pill color="blue">{enrolled} 学员</Pill>
+              <Pill color="indigo">{posts} 内容</Pill>
+              {cls.monthlyFee>0&&<Pill color="green">¥{cls.monthlyFee}/月</Pill>}
+            </div>
+            <div style={{display:"flex",gap:6}}>
+              <Btn v="primary" size="sm" onClick={()=>onEnter(cls.id)}>进入 →</Btn>
+              <Btn v="danger" size="sm" onClick={()=>setCfDel(cls.id)}>删除</Btn>
+            </div>
+          </div>
+        </div>;
+      })}
+    </div>
+    <Modal open={modal} title="新建班级" onClose={()=>setModal(false)}>
+      <Inp label="班级名称" value={form.name} onChange={v=>setForm(f=>({...f,name:v}))}/>
+      <Inp label="描述（选填）" value={form.desc} onChange={v=>setForm(f=>({...f,desc:v}))}/>
+      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn v="ghost" onClick={()=>setModal(false)}>取消</Btn><Btn onClick={save}>创建</Btn></div>
+    </Modal>
+    {cfDel&&<ConfirmDlg msg="删除整个班级及所有内容？" onOk={()=>del(cfDel)} onNo={()=>setCfDel(null)}/>}
+  </div>;
+}
+
+
+
+function TClassroom({classId,show}){
+  const {theme,data,setData}=useApp();const dk=theme==="dark";const sc=dk?"#64748b":"#94a3b8";const tc=dk?"#f1f5f9":"#0f172a";
+  const [tabId,setTabId]=useState("feed");
+  const [postModal,setPostModal]=useState(null);
+  const [linkModal,setLinkModal]=useState(false);
+  const [clsModal,setClsModal]=useState(false);
+  const [cfDelP,setCfDelP]=useState(null);
+  const [addStuOpen,setAddStuOpen]=useState(false);
+  const [pf,setPf]=useState({title:"",content:"",url:"",fileData:null,fileName:"",materialType:"link",images:[]});
+  const [newLink,setNewLink]=useState("");
+  const [feeInput,setFeeInput]=useState("0");
+  const [colorIdx,setColorIdx]=useState(0);
+  const [imgLoading,setImgLoading]=useState(false);
+  const [copied,setCopied]=useState(false);
+  const cls=data.classes.find(c=>c.id===classId);
+  useEffect(()=>{if(cls){setNewLink(cls.classLink||"");setFeeInput(String(cls.monthlyFee||0));setColorIdx(cls.colorIdx||0);};},[classId]);
+  if(!cls)return null;
+  const pal=palOf(cls,data.classes.indexOf(cls));
+  const feed=data.posts.filter(p=>p.classId===classId&&p.type!=="forum").sort((a,b)=>b.createdAt-a.createdAt);
+  const forum=data.posts.filter(p=>p.classId===classId&&p.type==="forum").sort((a,b)=>b.createdAt-a.createdAt);
+  const enrolled=data.users.filter(u=>(u.enrolledClasses||[]).includes(classId));
+  const classBadges=data.badges.filter(b=>b.classId===classId);
+  const savePost=()=>{if(!pf.title.trim()&&!pf.content.trim()&&!pf.images.length&&!pf.fileData)return;setData({...data,posts:[...data.posts,{id:gid(),classId,type:postModal,title:pf.title.trim()||pf.content.slice(0,40)||"📎",content:pf.content,url:pf.url||(postModal==="material"?"":pf.url),images:pf.images||[],materialType:pf.materialType,fileData:pf.fileData,fileName:pf.fileName,authorId:"t1",createdAt:Date.now(),likes:[]}]});setPostModal(null);setPf({title:"",content:"",url:"",fileData:null,fileName:"",materialType:"link",images:[]});show("发布成功");};
+  const saveLink=()=>{setData({...data,classes:data.classes.map(c=>c.id===classId?{...c,classLink:newLink,linkUpdatedAt:Date.now()}:c)});setLinkModal(false);show("链接已更新");};
+  const saveCls=()=>{setData({...data,classes:data.classes.map(c=>c.id===classId?{...c,monthlyFee:parseInt(feeInput)||0,colorIdx}:c)});setClsModal(false);show("设置已保存");};
+  const delPost=(id)=>{setData({...data,posts:data.posts.filter(p=>p.id!==id)});setCfDelP(null);show("已删除","warn");};
+  const handleImgs=async(files)=>{if(!files||!files.length)return;const avail=5-(pf.images.length);if(avail<=0){show("最多5张","warn");return;}setImgLoading(true);const imgs=[];for(const f of Array.from(files).slice(0,avail)){try{imgs.push(await resizeImg(f));}catch{}}setPf(prev=>({...prev,images:[...prev.images,...imgs]}));setImgLoading(false);};
+  const handleFile=(file,type)=>{const r=new FileReader();r.onload=e=>setPf(prev=>({...prev,fileData:e.target.result,fileName:file.name,materialType:type}));r.readAsDataURL(file);};
+  
+  
+  const ts=id=>({padding:"9px 14px",border:"none",background:"transparent",cursor:"pointer",fontWeight:tabId===id?700:400,color:tabId===id?"#FFB800":sc,fontSize:13,fontFamily:"inherit",borderBottom:tabId===id?"2.5px solid #FFB800":"2.5px solid transparent",transition:"all .15s",whiteSpace:"nowrap"});
+  return <div>
+    <div style={{borderRadius:16,overflow:"hidden",marginBottom:16,boxShadow:dk?"0 4px 16px rgba(0,0,0,.3)":"0 4px 16px rgba(0,0,0,.08)"}}>
+      <div style={{background:"linear-gradient(135deg,"+pal[0]+","+pal[1]+")",padding:"20px"}}>
+        <h2 style={{margin:"0 0 4px",fontSize:20,fontWeight:800,color:"#fff"}}>{cls.name}</h2>
+        {cls.desc&&<div style={{fontSize:13,color:"rgba(255,255,255,.8)",marginBottom:10}}>{cls.desc}</div>}
+        {cls.classLink?<div style={{background:"rgba(255,255,255,.18)",borderRadius:10,padding:"9px 13px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+          <div><div style={{fontSize:10,color:"rgba(255,255,255,.7)",marginBottom:2}}>📌 上课链接</div><div style={{fontSize:13,color:"#fff",wordBreak:"break-all"}}>{cls.classLink}</div></div>
+          <div style={{display:"flex",gap:6,flexShrink:0}}>
+            <Btn v="white" size="sm" onClick={()=>window.open(cls.classLink,"_blank")}>{lang==="en"?"Open":"打开"}</Btn>
+            <Btn v="white" size="sm" onClick={()=>{try{navigator.clipboard.writeText(cls.classLink).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2000)});}catch{}}}>{copied?"已复制":"复制"}</Btn>
+            <Btn v="white" size="sm" onClick={()=>setLinkModal(true)}>✎</Btn>
+          </div>
+        </div>:<Btn v="white" size="sm" onClick={()=>setLinkModal(true)}>+ 设置上课链接</Btn>}
+      </div>
+    </div>
+    <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+      <Btn v="primary" size="sm" onClick={()=>{setPostModal("material");setPf({title:"",content:"",url:"",fileData:null,fileName:"",materialType:"link",images:[]});}}>📎 发布教材</Btn>
+      <Btn v="soft" size="sm" onClick={()=>{setPostModal("announcement");setPf({title:"",content:"",url:"",fileData:null,fileName:"",materialType:"link",images:[]});}}>📢 发布通告</Btn>
+      <Btn v="ghost" size="sm" onClick={()=>setLinkModal(true)}>🔗 更新链接</Btn>
+      <Btn v="ghost" size="sm" onClick={()=>setClsModal(true)}>⚙️ 班级设置</Btn>
+    </div>
+    <div style={{display:"flex",borderBottom:"1px solid "+(dk?"rgba(255,255,255,.06)":"rgba(0,0,0,.06)"),marginBottom:14,overflowX:"auto"}}>
+      <button style={ts("feed")} onClick={()=>setTabId("feed")}>📋 教材通告 ({feed.length})</button>
+      <button style={ts("forum")} onClick={()=>setTabId("forum")}>💬 论坛 ({forum.length})</button>
+      <button style={ts("badges")} onClick={()=>setTabId("badges")}>徽章 ({classBadges.length})</button>
+      <button style={ts("members")} onClick={()=>setTabId("members")}>👥 学员 ({enrolled.length})</button>
+    </div>
+    {tabId==="feed"&&<div>{feed.length===0&&<p style={{color:sc,textAlign:"center",padding:"36px 0"}}>{lang==="en"?"No content yet":"暂无内容"}</p>}{feed.map(post=><PostCard key={post.id} post={post} isTeacher userId="t1" onDelete={()=>setCfDelP(post.id)} show={show}/>)}</div>}
+    {tabId==="forum"&&<div><div style={{marginBottom:12}}><Btn v="soft" size="sm" onClick={()=>{setPostModal("forum");setPf({title:"",content:"",url:"",fileData:null,fileName:"",materialType:"link",images:[]});}}>+ 发帖</Btn></div>{forum.length===0&&<p style={{color:sc,textAlign:"center",padding:"36px 0"}}>{lang==="en"?"No posts yet":"暂无帖子"}</p>}{forum.map(post=><PostCard key={post.id} post={post} isTeacher userId="t1" onDelete={()=>setCfDelP(post.id)} show={show}/>)}</div>}
+    {tabId==="badges"&&<ClassBadgesPanel classId={classId} show={show}/>}
+    {tabId==="members"&&<div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}><span style={{fontWeight:700,fontSize:14,color:tc}}>👥 {enrolled.length} 位学员</span><Btn v="primary" size="sm" onClick={()=>setAddStuOpen(true)}>+ 加入学员</Btn></div>
+      {enrolled.map(s=><Card key={s.id} style={{padding:"11px 14px",marginBottom:8,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div style={{display:"flex",gap:10,alignItems:"center"}}><span style={{fontSize:22}}>{s.avatar}</span><div><div style={{fontWeight:700,fontSize:13,color:tc}}>{s.name}</div><div style={{fontSize:11,color:sc}}>@{s.username}</div></div></div>
+        <div style={{display:"flex",gap:6,alignItems:"center"}}>
+          <Pill color={s.feesPaid?"green":"red"}>{s.feesPaid?"已缴费":"未缴费"}</Pill>
+          <Btn v="danger" size="sm" onClick={()=>setData({...data,users:data.users.map(u=>u.id===s.id?{...u,enrolledClasses:(u.enrolledClasses||[]).filter(c=>c!==classId)}:u)})}>移出</Btn>
+        </div>
+      </Card>)}
+      {enrolled.length===0&&<p style={{color:sc,textAlign:"center",padding:"36px 0"}}>暂无学员</p>}
+    </div>}
+    <Modal open={!!postModal} title={postModal==="material"?"发布教材":postModal==="announcement"?"发布通告":"发帖"} onClose={()=>setPostModal(null)} wide>
+      <Inp label="标题（选填）" value={pf.title} onChange={v=>setPf(f=>({...f,title:v}))} placeholder="输入标题..."/>
+      <Txt label="内容" value={pf.content} onChange={v=>setPf(f=>({...f,content:v}))} rows={4} placeholder="输入内容..."/>
+      {postModal==="material"&&<div style={{marginBottom:14}}>
+        <div style={{fontSize:11,fontWeight:700,marginBottom:8,textTransform:"uppercase",letterSpacing:.5,color:sc}}>上传类型</div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
+          {[["link","🔗 链接"],["image","🖼️ 图片"],["pdf","📄 PDF"],["video","🎬 视频"]].map(([val,lb])=><button key={val} onClick={()=>setPf(f=>({...f,materialType:val,fileData:null,fileName:""}))} style={{padding:"6px 12px",borderRadius:8,border:"1.5px solid "+(pf.materialType===val?"#FFB800":"rgba(0,0,0,.15)"),background:pf.materialType===val?"rgba(255,184,0,.15)":"transparent",color:pf.materialType===val?"#FFB800":sc,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>{lb}</button>)}
+        </div>
+        {pf.materialType==="image"&&<React.Fragment><input type="file" accept="image/*" id="mat-img" style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleFile(e.target.files[0],"image");e.target.value="";}}/><label htmlFor="mat-img"><span style={{display:"inline-flex",alignItems:"center",gap:6,padding:"8px 14px",borderRadius:9,border:"1.5px dashed #6366f1",background:"rgba(255,184,0,.08)",cursor:"pointer",fontSize:13,color:"#FFB800",fontWeight:600}}>🖼️ 选择图片</span></label></React.Fragment>}
+        {pf.materialType==="pdf"&&<React.Fragment><input type="file" accept=".pdf" id="mat-pdf" style={{display:"none"}} onChange={e=>{if(e.target.files[0])handleFile(e.target.files[0],"pdf");e.target.value="";}}/><label htmlFor="mat-pdf"><span style={{display:"inline-flex",alignItems:"center",gap:6,padding:"8px 14px",borderRadius:9,border:"1.5px dashed #6366f1",background:"rgba(255,184,0,.08)",cursor:"pointer",fontSize:13,color:"#FFB800",fontWeight:600}}>📄 选择PDF</span></label></React.Fragment>}
+        {pf.fileData&&<div style={{marginTop:8,padding:"8px 12px",borderRadius:8,background:"rgba(99,102,241,.07)",display:"flex",gap:8,alignItems:"center"}}><span>📎</span><span style={{flex:1,fontSize:12,color:tc,wordBreak:"break-all"}}>{pf.fileName}</span><button onClick={()=>setPf(f=>({...f,fileData:null,fileName:""}))} style={{background:"none",border:"none",cursor:"pointer",color:"#ef4444",fontSize:13}}>✕</button></div>}
+        {(pf.materialType==="link"||pf.materialType==="video")&&<Inp label="链接地址" value={pf.url} onChange={v=>setPf(f=>({...f,url:v}))} placeholder="https://..."/>}
+      </div>}
+      {postModal==="forum"&&<div style={{marginBottom:14}}>
+        <div style={{fontSize:11,fontWeight:700,marginBottom:6,textTransform:"uppercase",letterSpacing:.5,color:sc}}>图片（选填，最多5张）</div>
+        <input type="file" accept="image/*" multiple id="post-imgs" style={{display:"none"}} onChange={e=>{handleImgs(e.target.files);e.target.value="";}}/>
+        <label htmlFor="post-imgs"><span style={{display:"inline-flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:9,border:"1.5px dashed #6366f1",background:"rgba(255,184,0,.08)",cursor:"pointer",fontSize:13,color:imgLoading?"#94a3b8":"#FFB800",fontWeight:600}}>{imgLoading?"⏳ 处理中...":"🖼️ 添加图片"} ({pf.images.length}/5)</span></label>
+        {pf.images.length>0&&<div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:8}}>{pf.images.map((img,i)=><div key={i} style={{position:"relative",width:68,height:68}}><img src={img} style={{width:68,height:68,objectFit:"cover",borderRadius:8,display:"block"}}/><button onClick={()=>setPf(f=>({...f,images:f.images.filter((_,j)=>j!==i)}))} style={{position:"absolute",top:-6,right:-6,background:"#ef4444",border:"none",color:"#fff",width:18,height:18,borderRadius:"50%",cursor:"pointer",fontSize:10}}>✕</button></div>)}</div>}
+        <Inp label="附件链接（选填）" value={pf.url} onChange={v=>setPf(f=>({...f,url:v}))} placeholder="https://..." style={{marginTop:8}}/>
+      </div>}
+      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn v="ghost" onClick={()=>setPostModal(null)}>取消</Btn><Btn onClick={savePost}>发布</Btn></div>
+    </Modal>
+    <Modal open={linkModal} title="更新上课链接" onClose={()=>setLinkModal(false)}>
+      <Inp label="链接地址" value={newLink} onChange={setNewLink} placeholder="https://zoom.us/j/..."/>
+      <p style={{fontSize:12,color:sc,margin:"0 0 14px"}}>更新后学生将看到提醒通知</p>
+      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn v="ghost" onClick={()=>setLinkModal(false)}>取消</Btn><Btn onClick={saveLink}>保存</Btn></div>
+    </Modal>
+    <Modal open={clsModal} title="班级设置" onClose={()=>setClsModal(false)}>
+      <div style={{marginBottom:16}}>
+        <div style={{fontSize:11,fontWeight:700,marginBottom:10,textTransform:"uppercase",letterSpacing:.5,color:sc}}>班级颜色</div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {PALS.map((pal2,idx)=><button key={idx} onClick={()=>setColorIdx(idx)} style={{width:26,height:26,borderRadius:7,background:"linear-gradient(135deg,"+pal2[0]+","+pal2[1]+")",border:"3px solid "+(colorIdx===idx?"#fff":"transparent"),outline:colorIdx===idx?"2px solid "+pal2[0]:"none",cursor:"pointer",padding:0}}/>)}
+        </div>
+      </div>
+      <div style={{marginBottom:16}}>
+        <div style={{fontSize:11,fontWeight:700,marginBottom:8,textTransform:"uppercase",letterSpacing:.5,color:sc}}>💰 课程月费</div>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <span style={{color:sc,fontSize:16}}>¥</span>
+          <input type="number" value={feeInput} onChange={e=>setFeeInput(e.target.value)} min="0" placeholder="0"
+            style={{flex:1,padding:"10px 13px",borderRadius:10,border:"1.5px solid "+(dk?"rgba(255,255,255,.1)":"rgba(0,0,0,.1)"),background:dk?"rgba(255,255,255,.05)":"rgba(0,0,0,.02)",color:dk?"#f1f5f9":"#0f172a",fontSize:14,outline:"none",fontFamily:"inherit"}}/>
+          <span style={{color:sc,fontSize:13}}>/月</span>
+        </div>
+        <p style={{fontSize:11,color:sc,marginTop:5}}>学生缴费界面将显示此费用</p>
+      </div>
+      <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn v="ghost" onClick={()=>setClsModal(false)}>取消</Btn><Btn onClick={saveCls}>保存</Btn></div>
+    </Modal>
+    {addStuOpen&&<AddStuModal classId={classId} onClose={()=>setAddStuOpen(false)} show={show}/>}
+    {cfDelP&&<ConfirmDlg msg="删除这条内容？" onOk={()=>delPost(cfDelP)} onNo={()=>setCfDelP(null)}/>}
+  </div>;
+}
+
+
+
+function AddStuModal({classId,onClose,show}){
+  const {theme,data,setData}=useApp();const dk=theme==="dark";const tc=dk?"#f1f5f9":"#0f172a";const sc=dk?"#64748b":"#94a3b8";
+  const [sel,setSel]=useState([]);
+  const notIn=data.users.filter(u=>u.role==="student"&&!(u.enrolledClasses||[]).includes(classId));
+  const doAdd=()=>{if(!sel.length)return;setData({...data,users:data.users.map(u=>sel.includes(u.id)?{...u,enrolledClasses:[...(u.enrolledClasses||[]),classId]}:u)});show(sel.length+" 位学员已加入");onClose();};
+  return <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{position:"fixed",inset:0,zIndex:9100,display:"flex",alignItems:"center",justifyContent:"center",padding:16,background:"rgba(0,0,0,.55)",backdropFilter:"blur(8px)"}}>
+    <div style={{width:"100%",maxWidth:400,background:dk?"#1e293b":"#fff",borderRadius:20,overflow:"hidden",boxShadow:"0 24px 60px rgba(0,0,0,.35)",animation:"mPop .2s ease"}}>
+      <div style={{padding:"18px 20px 12px",borderBottom:"1px solid "+(dk?"rgba(255,255,255,.05)":"rgba(0,0,0,.06)")}}>
+        <h3 style={{margin:0,fontSize:16,fontWeight:700,color:tc}}>选择要加入的学员</h3>
+      </div>
+      <div style={{maxHeight:320,overflowY:"auto",padding:"10px 12px"}}>
+        {notIn.length===0&&<p style={{color:sc,textAlign:"center",padding:"24px"}}>所有学员已加入此班</p>}
+        {notIn.map(s=><div key={s.id} onClick={()=>setSel(v=>v.includes(s.id)?v.filter(x=>x!==s.id):[...v,s.id])} style={{display:"flex",gap:10,alignItems:"center",padding:"9px 11px",borderRadius:10,marginBottom:5,cursor:"pointer",background:sel.includes(s.id)?"rgba(255,184,0,.15)":"rgba(255,255,255,.02)"}}>
+          <div style={{width:22,height:22,borderRadius:6,border:"2px solid "+(sel.includes(s.id)?"#FFB800":"rgba(0,0,0,.2)"),background:sel.includes(s.id)?"#FFB800":"transparent",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:12,flexShrink:0}}>{sel.includes(s.id)?"✓":""}</div>
+          <span style={{fontSize:20}}>{s.avatar}</span>
+          <div><div style={{fontWeight:700,fontSize:13,color:tc}}>{s.name}</div><div style={{fontSize:11,color:sc}}>@{s.username} · {s.feesPaid?"已缴费":"未缴费"}</div></div>
+        </div>)}
+      </div>
+      <div style={{padding:"12px 16px",borderTop:"1px solid "+(dk?"rgba(255,255,255,.05)":"rgba(0,0,0,.06)"),display:"flex",gap:8,justifyContent:"flex-end"}}>
+        <Btn v="ghost" onClick={onClose}>取消</Btn>
+        <Btn onClick={doAdd} disabled={!sel.length}>加入 {sel.length>0?"("+sel.length+")":""}</Btn>
+      </div>
+    </div>
+  </div>;
+}
+
+
+
+function ClassBadgesPanel({classId,show}){
+  const {theme,data,setData}=useApp();
+  const dk=theme==="dark"; const tc=dk?"#f1f5f9":"#0f172a"; const sc=dk?"#64748b":"#94a3b8";
+  const [modal,setModal]=useState(null);
+  const [form,setForm]=useState({name:"",desc:"",icon:"🏆",points:30});
+  const [awardM,setAwardM]=useState(null);
+  const [cfDel,setCfDel]=useState(null);
+  const [cfAward,setCfAward]=useState(null);
+  const cls=data.classes.find(cl=>cl.id===classId);
+  const badges=data.badges.filter(b=>b.classId===classId);
+  const enrolled=data.users.filter(u=>u.role==="student"&&(u.enrolledClasses||[]).includes(classId));
+  const save=()=>{
+    if(!form.name.trim())return;
+    const nd={...data};
+    if(modal==="add")nd.badges=[...data.badges,{id:gid(),name:form.name.trim(),desc:form.desc.trim(),icon:form.icon||"🏆",points:parseInt(form.points)||0,classId}];
+    else nd.badges=data.badges.map(b=>b.id===modal?{...b,name:form.name.trim(),desc:form.desc.trim(),icon:form.icon||"🏆",points:parseInt(form.points)||0}:b);
+    setData(nd);setModal(null);show("已保存");
+  };
+  const doAward=()=>{
+    const {sId,bId,has}=cfAward;
+    if(has)setData({...data,studentBadges:data.studentBadges.filter(sb=>!(sb.studentId===sId&&sb.badgeId===bId))});
+    else setData({...data,studentBadges:[...data.studentBadges,{studentId:sId,badgeId:bId,earnedAt:Date.now()}]});
+    show(has?"已收回":"已颁发");setCfAward(null);setAwardM(null);
+  };
+  const ICONS=["🏆","⭐","🌟","🎯","📚","🔥","💎","🎖","🥇","🥈","🥉","🎁","🚀","✨","💡","🎓","🦁","🐯","🦋","💪","🧠","🎨","🎵","🌈"];
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <div>
+          <div style={{fontWeight:800,fontSize:15,color:tc}}>班级徽章</div>
+          <div style={{fontSize:12,color:sc,marginTop:2}}>仅属于「{cls&&cls.name}」</div>
+        </div>
+        <Btn v="primary" size="sm" onClick={()=>{setForm({name:"",desc:"",icon:"🏆",points:30});setModal("add");}}>+ 创建徽章</Btn>
+      </div>
+      {badges.length===0&&<div style={{textAlign:"center",padding:"32px 20px",color:sc,background:dk?"rgba(255,255,255,.03)":"rgba(0,0,0,.02)",borderRadius:14,border:"2px dashed "+(dk?"rgba(255,255,255,.08)":"rgba(0,0,0,.08)")}}>
+        <div style={{fontSize:36,marginBottom:8}}>🏅</div>
+        <div style={{fontSize:13}}>暂无徽章，点击「创建徽章」开始</div>
+      </div>}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:12}}>
+        {badges.map(b=>{
+          const cnt=data.studentBadges.filter(sb=>sb.badgeId===b.id).length;
+          return (
+            <Card key={b.id} style={{padding:16,textAlign:"center"}}>
+              <div style={{fontSize:38,marginBottom:8}}>{b.icon}</div>
+              <div style={{fontWeight:800,fontSize:14,color:tc,marginBottom:4}}>{b.name}</div>
+              {b.desc&&<div style={{fontSize:11,color:sc,lineHeight:1.5,marginBottom:6}}>{b.desc}</div>}
+              <Pill color="amber">⭐ {b.points} 分</Pill>
+              <div style={{fontSize:11,color:sc,marginTop:5}}>{cnt}/{enrolled.length} 已获得</div>
+              <div style={{display:"flex",gap:5,justifyContent:"center",marginTop:10}}>
+                <Btn v="success" size="sm" onClick={()=>setAwardM(b)}>颁发</Btn>
+                <Btn v="soft" size="sm" onClick={()=>{setForm({name:b.name,desc:b.desc||"",icon:b.icon,points:String(b.points)});setModal(b.id);}}>✎</Btn>
+                <Btn v="danger" size="sm" onClick={()=>setCfDel(b.id)}>🗑</Btn>
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+      <Modal open={!!modal} title={modal==="add"?"创建班级徽章":"编辑徽章"} onClose={()=>setModal(null)}>
+        <Inp label="徽章标题 Title *" value={form.name} onChange={v=>setForm(f=>({...f,name:v}))} placeholder="例：数学达人"/>
+        <Txt label="描述 Description" value={form.desc} onChange={v=>setForm(f=>({...f,desc:v}))} rows={2} placeholder="描述此徽章的获得条件..."/>
+        <div style={{marginBottom:14}}>
+          <div style={{fontSize:11,fontWeight:700,marginBottom:10,textTransform:"uppercase",letterSpacing:.5,color:sc}}>图标 Icon</div>
+          <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:8}}>
+            {ICONS.map(ic=><button key={ic} onClick={()=>setForm(f=>({...f,icon:ic}))} style={{fontSize:24,width:42,height:42,borderRadius:10,border:"2px solid "+(form.icon===ic?"#FFB800":"transparent"),background:form.icon===ic?"rgba(255,184,0,.15)":"transparent",cursor:"pointer"}}>{ic}</button>)}
+          </div>
+          <Inp label="或输入自定义 Emoji" value={form.icon} onChange={v=>setForm(f=>({...f,icon:v}))} placeholder="🏆"/>
+        </div>
+        <Inp label="兑换所需积分 Points" type="number" value={String(form.points)} onChange={v=>setForm(f=>({...f,points:v}))} min="0"/>
+        <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn v="ghost" onClick={()=>setModal(null)}>取消</Btn><Btn onClick={save}>保存</Btn></div>
+      </Modal>
+      <Modal open={!!awardM} title={"颁发徽章："+((awardM&&awardM.name)||"")} onClose={()=>setAwardM(null)}>
+        {awardM&&awardM.desc&&<p style={{fontSize:12,color:sc,marginBottom:12}}>{awardM.desc}</p>}
+        <p style={{fontSize:12,color:sc,marginBottom:12}}>仅显示班级内学员</p>
+        {enrolled.length===0&&<p style={{color:sc,textAlign:"center",padding:16}}>暂无学员</p>}
+        {enrolled.map(st=>{
+          const has=data.studentBadges.find(sb=>sb.studentId===st.id&&awardM&&sb.badgeId===awardM.id);
+          return (
+            <div key={st.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 12px",borderRadius:10,marginBottom:6,background:dk?"rgba(255,255,255,.03)":"rgba(0,0,0,.02)"}}>
+              <div style={{display:"flex",gap:9,alignItems:"center"}}>
+                <span style={{fontSize:22}}>{st.avatar}</span>
+                <div>
+                  <div style={{fontWeight:700,fontSize:13,color:tc}}>{st.name}</div>
+                  <div style={{fontSize:11,color:sc}}>⭐ {st.points||0}</div>
+                </div>
+                {has&&<Pill color="green">✓ 已获</Pill>}
+              </div>
+              <Btn v={has?"danger":"success"} size="sm" onClick={()=>setCfAward({sId:st.id,bId:awardM.id,has:!!has})}>{has?"收回":"颁发"}</Btn>
+            </div>
+          );
+        })}
+      </Modal>
+      {cfDel&&<ConfirmDlg msg="删除此徽章？" onOk={()=>{setData({...data,badges:data.badges.filter(x=>x.id!==cfDel),studentBadges:data.studentBadges.filter(sb=>sb.badgeId!==cfDel)});setCfDel(null);show("已删除","warn");}} onNo={()=>setCfDel(null)}/>}
+      {cfAward&&<ConfirmDlg msg={cfAward.has?"确认收回？":"确认颁发？"} onOk={doAward} onNo={()=>setCfAward(null)}/>}
+    </div>
+  );
+}
+
+
+function TStudents({show}){
+  const {theme,data,setData}=useApp();
+  const dk=theme==="dark"; const tc=dk?"#f1f5f9":"#0f172a"; const sc=dk?"#64748b":"#94a3b8";
+  const [search,setSearch]=useState("");
+  const [fFee,setFFee]=useState("all");
+  const [fCls,setFCls]=useState("all");
+  const [modal,setModal]=useState(null);
+  const [form,setForm]=useState({name:"",username:"",password:"",feesPaid:false,enrolledClasses:[],avatar:"🧑‍🎓",bio:"",points:0});
+  const [ptM,setPtM]=useState(null);
+  const [ptAmt,setPtAmt]=useState("");
+  const [ptR,setPtR]=useState("");
+  const [detailStu,setDetailStu]=useState(null);
+  const [cfDel,setCfDel]=useState(null);
+  const AVATARS=["🦊","🐺","🦁","🐯","🐻","🐼","🦝","🦉","🦋","🐸","🦄","🐲","⚡","🔥","🌊","🌸","🍀","💎","🚀","🎮","🎭","🌈","🍭","🏆"];
+  const sts=data.users.filter(u=>u.role==="student").filter(s=>{
+    if(search&&!s.name.toLowerCase().includes(search.toLowerCase())&&!s.username.toLowerCase().includes(search.toLowerCase()))return false;
+    if(fFee==="paid"&&!s.feesPaid)return false;
+    if(fFee==="unpaid"&&s.feesPaid)return false;
+    if(fCls!=="all"&&!(s.enrolledClasses||[]).includes(fCls))return false;
+    return true;
+  });
+  const save=()=>{
+    if(!form.name||!form.username||!form.password){show("请填写必填项","error");return;}
+    const nd={...data};
+    if(modal==="add"){
+      if(data.users.find(u=>u.username===form.username)){show("账号已存在","error");return;}
+      nd.users=[...data.users,{...form,id:gid(),role:"student",points:parseInt(form.points)||0}];
+    }else{
+      nd.users=data.users.map(u=>u.id===modal?{...form,id:u.id,role:"student",points:parseInt(form.points)||0}:u);
+    }
+    setData(nd);setModal(null);show("已保存");
+  };
+  const adjPts=()=>{
+    const amt=parseInt(ptAmt);if(isNaN(amt))return;
+    setData({...data,users:data.users.map(u=>u.id===ptM.id?{...u,points:Math.max(0,(u.points||0)+amt)}:u),pointTransactions:[...data.pointTransactions,{id:gid(),studentId:ptM.id,amount:amt,reason:ptR||"调整",timestamp:Date.now()}]});
+    setPtM(null);setPtAmt("");setPtR("");show("积分已调整");
+  };
+  const chip=(active,lb,cb)=><button onClick={cb} style={{padding:"5px 12px",borderRadius:50,border:"none",cursor:"pointer",fontFamily:"inherit",background:active?"linear-gradient(135deg,#FFB800,#FF8C00)":"rgba(0,0,0,.06)",color:active?"#fff":sc,fontSize:12,fontWeight:active?700:400}}>{lb}</button>;
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+        <h2 style={{margin:0,fontSize:20,fontWeight:800,color:tc}}>{lang==="en"?"Students":"学员管理"} ({data.users.filter(u=>u.role==="student").length})</h2>
+        <Btn onClick={()=>{setForm({name:"",username:"",password:"",feesPaid:false,enrolledClasses:[],avatar:"🧑‍🎓",bio:"",points:0});setModal("add");}}>新增学员</Btn>
+      </div>
+      <Card style={{padding:"14px 16px",marginBottom:16}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 搜索姓名 / 账号..."
+          style={{width:"100%",padding:"9px 13px",borderRadius:10,border:"1.5px solid "+(dk?"rgba(255,255,255,.1)":"rgba(0,0,0,.1)"),background:dk?"rgba(255,255,255,.04)":"rgba(0,0,0,.02)",color:tc,fontSize:13,outline:"none",fontFamily:"inherit",marginBottom:10,boxSizing:"border-box"}}/>
+        <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
+          {chip(fFee==="all","全部",()=>setFFee("all"))}
+          {chip(fFee==="paid","✅ 已缴费",()=>setFFee("paid"))}
+          {chip(fFee==="unpaid","❌ 未缴费",()=>setFFee("unpaid"))}
+          <span style={{color:sc,fontSize:12,alignSelf:"center",margin:"0 2px"}}>|</span>
+          {chip(fCls==="all","所有班级",()=>setFCls("all"))}
+          {data.classes.map(cls2=>chip(fCls===cls2.id,cls2.name,()=>setFCls(cls2.id)))}
+        </div>
+      </Card>
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        {sts.map(s=>{
+          const clsList=data.classes.filter(cl2=>(s.enrolledClasses||[]).includes(cl2.id));
+          const monthlyFee=clsList.reduce((sum,cl2)=>sum+(cl2.monthlyFee||0),0);
+          const toggleFee=()=>{setData({...data,users:data.users.map(u=>u.id===s.id?{...u,feesPaid:!s.feesPaid}:u)});show(s.feesPaid?"已标记未缴费":"已标记已缴费");};
+          return (
+            <Card key={s.id} style={{padding:"12px 16px"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                <div style={{display:"flex",gap:12,alignItems:"center",cursor:"pointer",flex:1,borderRadius:12,padding:"4px 8px",transition:"background .15s"}}
+                  onClick={()=>setDetailStu(s)}
+                  onMouseEnter={e=>e.currentTarget.style.background=dk?"rgba(255,255,255,.05)":"rgba(255,184,0,.08)"}
+                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                  <div style={{width:46,height:46,borderRadius:14,background:"linear-gradient(135deg,#FFB800,#FF8C00)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,flexShrink:0}}>{s.avatar}</div>
+                  <div>
+                    <div style={{fontWeight:700,fontSize:14,color:tc}}>{s.name}</div>
+                    <div style={{fontSize:12,color:sc}}>@{s.username}</div>
+                    <div style={{display:"flex",gap:8,marginTop:2,alignItems:"center"}}>
+                      <span style={{fontSize:12,color:"#FFB800",fontWeight:600}}>⭐ {s.points||0}</span>
+                      {monthlyFee>0&&<span style={{fontSize:11,color:sc}}>¥{monthlyFee}/月</span>}
+                    </div>
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",flexShrink:0}}>
+                  <button onClick={toggleFee} style={{padding:"6px 12px",borderRadius:50,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:12,background:s.feesPaid?"rgba(34,197,94,.12)":"rgba(239,68,68,.12)",color:s.feesPaid?"#16a34a":"#ef4444",transition:"all .2s"}}>
+                    {s.feesPaid?"✅ 已缴费":"❌ 未缴费"}
+                  </button>
+                  <Btn v="soft" size="sm" onClick={()=>setPtM(s)}>± 积分</Btn>
+                  <Btn v="soft" size="sm" onClick={()=>{setForm({name:s.name,username:s.username,password:s.password,feesPaid:s.feesPaid,enrolledClasses:s.enrolledClasses||[],avatar:s.avatar||"🧑‍🎓",bio:s.bio||"",points:s.points||0});setModal(s.id);}}>✎</Btn>
+                  <Btn v="danger" size="sm" onClick={()=>setCfDel(s.id)}>🗑</Btn>
+                </div>
+              </div>
+              {clsList.length>0&&<div style={{marginTop:8,display:"flex",gap:5,flexWrap:"wrap"}}>{clsList.map(cl2=><Pill key={cl2.id} color="blue">{cl2.name}</Pill>)}</div>}
+            </Card>
+          );
+        })}
+        {sts.length===0&&<p style={{color:sc,textAlign:"center",padding:"32px 0"}}>没有符合条件的学员</p>}
+      </div>
+      <Modal open={!!modal} title={modal==="add"?"新增学员":"编辑学员"} onClose={()=>setModal(null)} wide>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 16px"}}>
+          <Inp label="姓名 *" value={form.name} onChange={v=>setForm(f=>({...f,name:v}))}/>
+          <Inp label="账号 *" value={form.username} onChange={v=>setForm(f=>({...f,username:v}))}/>
+          <Inp label="密码 *" value={form.password} onChange={v=>setForm(f=>({...f,password:v}))}/>
+          <Inp label="积分" type="number" value={String(form.points)} onChange={v=>setForm(f=>({...f,points:v}))}/>
+        </div>
+        <div style={{marginBottom:14}}>
+          <div style={{fontSize:11,fontWeight:700,marginBottom:8,textTransform:"uppercase",letterSpacing:.5,color:sc}}>头像</div>
+          <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>{AVATARS.map(av=><button key={av} onClick={()=>setForm(f=>({...f,avatar:av}))} style={{fontSize:22,padding:"5px",borderRadius:8,border:"2px solid "+(form.avatar===av?"#FFB800":"transparent"),background:form.avatar===av?"rgba(255,184,0,.12)":"transparent",cursor:"pointer"}}>{av}</button>)}</div>
+        </div>
+        <div style={{marginBottom:14}}>
+          <div style={{fontSize:11,fontWeight:700,marginBottom:8,textTransform:"uppercase",letterSpacing:.5,color:sc}}>报名班级</div>
+          <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>{data.classes.map(cls2=>{const checked=(form.enrolledClasses||[]).includes(cls2.id);return <button key={cls2.id} onClick={()=>setForm(f=>({...f,enrolledClasses:checked?(f.enrolledClasses||[]).filter(x=>x!==cls2.id):[...(f.enrolledClasses||[]),cls2.id]}))} style={{padding:"6px 12px",borderRadius:8,border:"1.5px solid "+(checked?"#FFB800":"rgba(0,0,0,.15)"),background:checked?"rgba(255,184,0,.15)":"transparent",color:checked?"#FFB800":sc,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>{cls2.name}</button>;})}</div>
+        </div>
+        <div style={{marginBottom:14,display:"flex",alignItems:"center",gap:10}}>
+          <input type="checkbox" id="feeChk" checked={form.feesPaid} onChange={e=>setForm(f=>({...f,feesPaid:e.target.checked}))} style={{width:18,height:18,cursor:"pointer"}}/>
+          <label htmlFor="feeChk" style={{fontSize:13,color:tc,cursor:"pointer"}}>已缴费</label>
+        </div>
+        <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn v="ghost" onClick={()=>setModal(null)}>取消</Btn><Btn onClick={save}>保存</Btn></div>
+      </Modal>
+      <Modal open={!!ptM} title={"调整积分："+((ptM&&ptM.name)||"")} onClose={()=>setPtM(null)}>
+        <Inp label="金额 (正数加分，负数扣分)" type="number" value={ptAmt} onChange={setPtAmt} placeholder="+10 or -5"/>
+        <Inp label="原因" value={ptR} onChange={setPtR} placeholder="教师奖励..."/>
+        <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}><Btn v="ghost" onClick={()=>setPtM(null)}>取消</Btn><Btn onClick={adjPts}>确认</Btn></div>
+      </Modal>
+      {detailStu&&<StudentDetail student={detailStu} onClose={()=>setDetailStu(null)} show={show}/>}
+      {cfDel&&<ConfirmDlg msg="删除这位学员？" onOk={()=>{setData({...data,users:data.users.filter(u=>u.id!==cfDel)});setCfDel(null);show("已删除","warn");}} onNo={()=>setCfDel(null)}/>}
+    </div>
+  );
+}
+
+
+function StudentDetail({student,onClose,show}){
+  const {theme,data,setData}=useApp();const dk=theme==="dark";const tc=dk?"#f1f5f9":"#0f172a";const sc=dk?"#64748b":"#94a3b8";
+  const [tab,setTab]=useState("info");const [showPw,setShowPw]=useState(false);
+  const [ptAmt,setPtAmt]=useState("");const [ptR,setPtR]=useState("");const [ptModal,setPtModal]=useState(false);
+  const s=data.users.find(u=>u.id===student.id)||student;
+  const myBadgeIds=data.studentBadges.filter(sb=>sb.studentId===s.id).map(sb=>sb.badgeId);
+  const myBadges=data.badges.filter(b=>myBadgeIds.includes(b.id));
+  const myPosts=data.posts.filter(p=>p.authorId===s.id).sort((a,b)=>b.createdAt-a.createdAt);
+  const myTxs=data.pointTransactions.filter(tx=>tx.studentId===s.id).sort((a,b)=>b.timestamp-a.timestamp);
+  const enrolledCls=data.classes.filter(cl=>(s.enrolledClasses||[]).includes(cl.id));
+  const totalFee=enrolledCls.reduce((sum,cl)=>sum+(cl.monthlyFee||0),0);
+  const adjPts=()=>{const amt=parseInt(ptAmt);if(isNaN(amt))return;setData({...data,users:data.users.map(u=>u.id===s.id?{...u,points:Math.max(0,(u.points||0)+amt)}:u),pointTransactions:[...data.pointTransactions,{id:gid(),studentId:s.id,amount:amt,reason:ptR||"调整",timestamp:Date.now()}]});setPtModal(false);setPtAmt("");setPtR("");show("积分已调整");};
+  const ts=id=>({padding:"9px 16px",border:"none",background:"transparent",cursor:"pointer",fontWeight:tab===id?700:400,color:tab===id?"#FFB800":sc,fontSize:13,fontFamily:"inherit",borderBottom:tab===id?"2.5px solid #FFB800":"2.5px solid transparent",whiteSpace:"nowrap"});
+  return <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{position:"fixed",inset:0,zIndex:9500,display:"flex",alignItems:"center",justifyContent:"center",padding:16,background:"rgba(0,0,0,.65)",backdropFilter:"blur(12px)"}}>
+    <div style={{width:"100%",maxWidth:580,maxHeight:"92vh",display:"flex",flexDirection:"column",background:dk?"#141a26":"#fff",borderRadius:22,overflow:"hidden",boxShadow:"0 32px 80px rgba(0,0,0,.4)",animation:"mPop .2s ease"}}>
+      <div style={{background:"linear-gradient(135deg,#FFB800,#FF8C00)",padding:"22px 22px 0",flexShrink:0}}>
+        <div style={{display:"flex",alignItems:"flex-start",gap:14,marginBottom:18}}>
+          <div style={{width:68,height:68,borderRadius:18,background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:38,border:"3px solid rgba(255,255,255,.3)"}}>{s.avatar}</div>
+          <div style={{flex:1}}>
+            <div style={{fontSize:19,fontWeight:800,color:"#fff"}}>{s.name}</div>
+            <div style={{fontSize:13,color:"rgba(255,255,255,.7)",marginBottom:8}}>@{s.username}</div>
+            <div style={{display:"flex",gap:16}}>
+              {[{l:"积分",v:"⭐ "+(s.points||0)},{l:"徽章",v:myBadges.length},{l:"帖子",v:myPosts.length},{l:"月费",v:"¥"+totalFee}].map(x=><div key={x.l} style={{textAlign:"center"}}><div style={{fontSize:18,fontWeight:700,color:"#fff"}}>{x.v}</div><div style={{fontSize:10,color:"rgba(255,255,255,.6)"}}>{x.l}</div></div>)}
+            </div>
+          </div>
+          <button onClick={onClose} style={{background:"rgba(255,255,255,.15)",border:"none",color:"#fff",width:30,height:30,borderRadius:"50%",cursor:"pointer",fontSize:13}}>✕</button>
+        </div>
+        <div style={{display:"flex",overflowX:"auto"}}>
+          {[["info","信息"],["posts","帖子"],["points","积分"],["badges","徽章"],["classes","班级"]].map(([id,lb])=><button key={id} style={ts(id)} onClick={()=>setTab(id)}>{lb}</button>)}
+        </div>
+      </div>
+      <div style={{flex:1,overflowY:"auto",padding:"18px 20px"}}>
+        {tab==="info"&&<div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <Card style={{padding:"14px 18px"}}>
+            <div style={{fontSize:11,fontWeight:700,color:sc,marginBottom:12,textTransform:"uppercase",letterSpacing:.5}}>🔑 账号信息</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              <div><div style={{fontSize:11,color:sc,marginBottom:3}}>用户名</div><div style={{fontWeight:700,color:tc}}>{s.username}</div></div>
+              <div><div style={{fontSize:11,color:sc,marginBottom:3}}>密码</div><div style={{display:"flex",alignItems:"center",gap:8}}><div style={{fontWeight:700,color:tc,fontFamily:"monospace"}}>{showPw?s.password:"••••••••"}</div><button onClick={()=>setShowPw(p=>!p)} style={{background:"none",border:"none",cursor:"pointer",color:"#FFB800",fontSize:13}}>{showPw?"🙈":"👁"}</button></div></div>
+              <div><div style={{fontSize:11,color:sc,marginBottom:3}}>缴费状态</div><Pill color={s.feesPaid?"green":"red"}>{s.feesPaid?"✓ 已缴费":"✗ 未缴费"}</Pill></div>
+              <div><div style={{fontSize:11,color:sc,marginBottom:3}}>角色</div><div style={{fontWeight:700,color:tc}}>🧑‍🎓 学生</div></div>
+            </div>
+          </Card>
+          <Card style={{padding:"14px 18px"}}>
+            <div style={{fontSize:11,fontWeight:700,color:sc,marginBottom:12,textTransform:"uppercase",letterSpacing:.5}}>⚡ 快捷操作</div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              <Btn v="success" size="sm" onClick={()=>{setData({...data,users:data.users.map(u=>u.id===s.id?{...u,feesPaid:!s.feesPaid}:u)});show("已更新");}}>{s.feesPaid?"标记未缴费":"标记已缴费"}</Btn>
+              <Btn v="soft" size="sm" onClick={()=>setPtModal(true)}>调整积分</Btn>
+            </div>
+          </Card>
+          {ptModal&&<Card style={{padding:"14px 18px"}}>
+            <div style={{fontSize:12,fontWeight:700,color:tc,marginBottom:10}}>调整积分</div>
+            <div style={{display:"flex",gap:8,marginBottom:8}}>
+              <input value={ptAmt} onChange={e=>setPtAmt(e.target.value)} placeholder="+10 or -5" style={{flex:1,padding:"8px 11px",borderRadius:8,border:"1.5px solid "+(dk?"rgba(255,255,255,.1)":"rgba(0,0,0,.1)"),background:dk?"rgba(255,255,255,.04)":"rgba(0,0,0,.02)",color:tc,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
+              <input value={ptR} onChange={e=>setPtR(e.target.value)} placeholder="原因" style={{flex:2,padding:"8px 11px",borderRadius:8,border:"1.5px solid "+(dk?"rgba(255,255,255,.1)":"rgba(0,0,0,.1)"),background:dk?"rgba(255,255,255,.04)":"rgba(0,0,0,.02)",color:tc,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
+            </div>
+            <div style={{display:"flex",gap:6}}><Btn v="primary" size="sm" onClick={adjPts}>确认</Btn><Btn v="ghost" size="sm" onClick={()=>setPtModal(false)}>取消</Btn></div>
+          </Card>}
+        </div>}
+        {tab==="posts"&&<div>
+          {myPosts.length===0&&<p style={{color:sc,textAlign:"center",padding:"28px 0"}}>暂无发帖</p>}
+          {myPosts.map(p=>{const cls=data.classes.find(c=>c.id===p.classId);return <Card key={p.id} style={{padding:"12px 16px",marginBottom:8}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}>
+              <div style={{display:"flex",gap:7}}><Pill color={p.type==="forum"?"indigo":p.type==="material"?"blue":"amber"}>{p.type==="forum"?"论坛":p.type==="material"?"教材":"通告"}</Pill>{cls&&<Pill color="purple">{cls.name}</Pill>}</div>
+              <span style={{fontSize:11,color:sc}}>{new Date(p.createdAt).toLocaleDateString()}</span>
+            </div>
+            <div style={{fontWeight:700,fontSize:13,color:tc}}>{p.title||"(无标题)"}</div>
+            {p.content&&<div style={{fontSize:12,color:sc,marginTop:3}}>{p.content.slice(0,100)}{p.content.length>100?"...":""}</div>}
+            <div style={{fontSize:11,color:sc,marginTop:6}}>❤️ {(p.likes||[]).length} · 💬 {data.comments.filter(c=>c.postId===p.id).length}</div>
+          </Card>;})}
+        </div>}
+        {tab==="points"&&<div>
+          <div style={{background:"linear-gradient(135deg,#f7971e,#ffd200)",borderRadius:14,padding:18,textAlign:"center",marginBottom:14}}>
+            <div style={{fontSize:40,fontWeight:800,color:"#1a1a2e"}}>⭐ {s.points||0}</div>
+            <div style={{fontSize:12,color:"rgba(26,26,46,.6)"}}>总积分</div>
+          </div>
+          {myTxs.length===0&&<p style={{color:sc,textAlign:"center",padding:"20px"}}>暂无积分记录</p>}
+          {myTxs.map(tx=><Card key={tx.id} style={{padding:"10px 14px",marginBottom:7,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div><div style={{fontSize:13,fontWeight:600,color:tc}}>{tx.reason}</div><div style={{fontSize:11,color:sc}}>{new Date(tx.timestamp).toLocaleString()}</div></div>
+            <span style={{fontWeight:700,fontSize:14,color:tx.amount>=0?"#10b981":"#ef4444"}}>{tx.amount>=0?"+":""}{tx.amount}</span>
+          </Card>)}
+        </div>}
+        {tab==="badges"&&<div>
+          {myBadges.length===0&&<p style={{color:sc,textAlign:"center",padding:"28px 0"}}>暂无徽章</p>}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:10}}>
+            {myBadges.map(b=>{const earned=data.studentBadges.find(sb=>sb.studentId===s.id&&sb.badgeId===b.id);return <Card key={b.id} style={{padding:12,textAlign:"center"}}><div style={{fontSize:32,marginBottom:5}}>{b.icon}</div><div style={{fontSize:12,fontWeight:700,color:tc,marginBottom:3}}>{b.name}</div>{earned&&<div style={{fontSize:10,color:sc}}>{new Date(earned.earnedAt).toLocaleDateString()}</div>}</Card>;})}
+          </div>
+        </div>}
+        {tab==="classes"&&<div>
+          {enrolledCls.length===0&&<p style={{color:sc,textAlign:"center",padding:"28px 0"}}>未报名任何班级</p>}
+          {enrolledCls.map((cl,i)=>{const pal=palOf(cl,i);return <div key={cl.id} style={{borderRadius:12,overflow:"hidden",marginBottom:10}}>
+            <div style={{background:"linear-gradient(135deg,"+pal[0]+","+pal[1]+")",padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div><div style={{fontWeight:700,color:"#fff",fontSize:14}}>{cl.name}</div>{cl.desc&&<div style={{fontSize:12,color:"rgba(255,255,255,.7)"}}>{cl.desc}</div>}</div>
+              <span style={{background:"rgba(255,255,255,.2)",color:"#fff",padding:"4px 10px",borderRadius:50,fontSize:12,fontWeight:700}}>¥{cl.monthlyFee||0}/月</span>
+            </div>
+          </div>;})}
+          <div style={{padding:"12px 16px",borderRadius:12,background:dk?"rgba(255,255,255,.04)":"rgba(0,0,0,.03)",display:"flex",justifyContent:"space-between"}}>
+            <span style={{fontWeight:700,color:tc}}>月总费用</span>
+            <span style={{fontWeight:800,color:"#FFB800",fontSize:16}}>¥{totalFee}</span>
+          </div>
+        </div>}
+      </div>
+    </div>
+  </div>;
+}
+
+
+
+function TPoints(){
+  const {theme,data}=useApp();const dk=theme==="dark";const tc=dk?"#f1f5f9":"#0f172a";const sc=dk?"#64748b":"#94a3b8";
+  const sts=data.users.filter(u=>u.role==="student").sort((a,b)=>(b.points||0)-(a.points||0));
+  return <div>
+    <h2 style={{margin:"0 0 16px",fontSize:20,fontWeight:800,color:tc}}>积分管理</h2>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:12,marginBottom:22}}>
+      {sts.map((s,i)=><Card key={s.id} style={{padding:14,textAlign:"center"}}>
+        <div style={{fontSize:22,marginBottom:4}}>{s.avatar}</div>
+        <div style={{fontWeight:700,fontSize:13,color:tc,marginBottom:2}}>{s.name}</div>
+        <div style={{fontWeight:800,fontSize:22,color:["#f59e0b","#94a3b8","#f97316"][i]||"#FFB800"}}>{"🥇🥈🥉"[i]||""} {s.points||0}</div>
+      </Card>)}
+    </div>
+    <h3 style={{margin:"0 0 12px",fontSize:15,fontWeight:800,color:tc}}>积分明细</h3>
+    {data.pointTransactions.slice().sort((a,b)=>b.timestamp-a.timestamp).map(tx=>{const s=data.users.find(u=>u.id===tx.studentId);return <Card key={tx.id} style={{padding:"10px 14px",marginBottom:7,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+      <div style={{display:"flex",gap:9,alignItems:"center"}}><span style={{fontSize:20}}>{s?.avatar||"👤"}</span><div><div style={{fontSize:13,fontWeight:600,color:tc}}>{s?.name} · {tx.reason}</div><div style={{fontSize:11,color:sc}}>{new Date(tx.timestamp).toLocaleString()}</div></div></div>
+      <span style={{fontWeight:700,fontSize:14,color:tx.amount>=0?"#10b981":"#ef4444"}}>{tx.amount>=0?"+":""}{tx.amount}</span>
+    </Card>;})}
+  </div>;
+}
+
+
+
+function TBadgesPage(){
+  const {theme,data}=useApp();const dk=theme==="dark";const tc=dk?"#f1f5f9":"#0f172a";const sc=dk?"#64748b":"#94a3b8";
+  return <div>
+    <h2 style={{margin:"0 0 6px",fontSize:20,fontWeight:800,color:tc}}>徽章总览</h2>
+    <p style={{margin:"0 0 18px",fontSize:13,color:sc}}>徽章是按班级管理的。进入具体班级 → 「徽章」标签来创建和颁发。</p>
+    {data.classes.map((cls,i)=>{const badges=data.badges.filter(b=>b.classId===cls.id);const pal=palOf(cls,i);return <div key={cls.id} style={{marginBottom:18}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+        <div style={{width:10,height:10,borderRadius:"50%",background:pal[0]}}/>
+        <span style={{fontWeight:700,fontSize:14,color:tc}}>{cls.name}</span>
+        <Pill color="blue">{badges.length} 个</Pill>
+      </div>
+      {badges.length===0&&<p style={{fontSize:12,color:sc,paddingLeft:20}}>暂无徽章</p>}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))",gap:8}}>
+        {badges.map(b=><Card key={b.id} style={{padding:12,textAlign:"center"}}><div style={{fontSize:28,marginBottom:4}}>{b.icon}</div><div style={{fontSize:12,fontWeight:700,color:tc,marginBottom:3}}>{b.name}</div><Pill color="amber">⭐ {b.points}</Pill></Card>)}
+      </div>
+    </div>;})}
+  </div>;
+}
+
+
+
+function TQR({show}){
+  const {theme,data,setData}=useApp();const dk=theme==="dark";const tc=dk?"#f1f5f9":"#0f172a";const sc=dk?"#64748b":"#94a3b8";
+  const handleQR=async(e)=>{if(!e.target.files[0])return;const img=await resizeImg(e.target.files[0],500);setData({...data,paymentQR:img});show("lang==="en"?"QR updated":"收款码已更新"");e.target.value="";};
+  return <div>
+    <h2 style={{margin:"0 0 16px",fontSize:20,fontWeight:800,color:tc}}>💳 收款码</h2>
+    <Card style={{maxWidth:360,padding:"28px",textAlign:"center"}}>
+      {data.paymentQR?<div><img src={data.paymentQR} style={{width:200,height:200,borderRadius:14,display:"block",margin:"0 auto 16px",objectFit:"cover"}}/><div style={{display:"flex",gap:8,justifyContent:"center"}}>
+        <label htmlFor="qr-up"><span style={{display:"inline-block",padding:"8px 16px",borderRadius:9,background:"linear-gradient(135deg,#FFB800,#FF8C00)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:13}}>更换</span></label>
+        <Btn v="danger" size="sm" onClick={()=>{setData({...data,paymentQR:null});show("已移除","warn");}}>移除</Btn>
+      </div></div>:<div>
+        <div style={{fontSize:64,marginBottom:12}}></div>
+        <p style={{fontSize:13,color:sc,marginBottom:16}}>上传收款码（支付宝/微信）</p>
+        <label htmlFor="qr-up"><span style={{display:"inline-block",padding:"9px 22px",borderRadius:10,background:"linear-gradient(135deg,#FFB800,#FF8C00)",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:14}}>上传图片</span></label>
+      </div>}
+      <input type="file" id="qr-up" accept="image/*" style={{display:"none"}} onChange={handleQR}/>
+    </Card>
+  </div>;
+}
+
+
+
+function TSettings({show,user}){
+  const {theme,setTheme,lang,setLang,data,setData}=useApp();const dk=theme==="dark";const tc=dk?"#f1f5f9":"#0f172a";const sc=dk?"#64748b":"#94a3b8";const L=lang==="en";
+  const [fbInput,setFbInput]=useState(()=>localStorage.getItem("th_fb")||"");
+  const [fbSaved,setFbSaved]=useState(false);
+  const [pw,setPw]=useState({old:"",new1:"",new2:""});
+  const saveFb=()=>{localStorage.setItem("th_fb",fbInput.trim());setFbSaved(true);setTimeout(()=>setFbSaved(false),2000);};
+  const changePw=()=>{if(!pw.old||!pw.new1||!pw.new2){show(L?"Fill all fields":"请填写所有密码字段","error");return;}if(pw.new1!==pw.new2){show(L?"Passwords don't match":"新密码不一致","error");return;}const teacher=data.users.find(u=>u.id==="t1");if(teacher&&teacher.password!==pw.old){show(L?"Wrong current password":"原密码错误","error");return;}setData({...data,users:data.users.map(u=>u.id==="t1"?{...u,password:pw.new1}:u)});setPw({old:"",new1:"",new2:""});show(L?"Password changed":"密码已更改");};
+  const C=(icon,title,children)=><div style={{background:dk?"#1e293b":"#fff",borderRadius:16,padding:"18px 20px",marginBottom:14,boxShadow:dk?"0 2px 12px rgba(0,0,0,.25)":"0 2px 10px rgba(0,0,0,.06)"}}>
+    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14}}><Ico n={icon} size={15} color="#FFB800"/><div style={{fontSize:13,fontWeight:700,color:tc}}>{title}</div></div>
+    {children}
+  </div>;
+  return <div style={{maxWidth:560,display:"flex",flexDirection:"column",gap:0}}>
+    {C("sun",L?"Appearance":"外观",<React.Fragment>
+      <div style={{marginBottom:14}}>
+        <div style={{fontSize:11,fontWeight:700,marginBottom:8,textTransform:"uppercase",letterSpacing:.5,color:sc}}>{L?"Theme":"主题"}</div>
+        <div style={{display:"flex",gap:8}}>
+          {[["light",L?"Light":"浅色","sun"],["dark",L?"Dark":"深色","moon"],["system",L?"System":"系统","settings"]].map(([v,lb,ic])=><button key={v} onClick={()=>setTheme(v)} style={{flex:1,padding:"9px 8px",borderRadius:10,border:"1.5px solid "+(theme===v?"#FFB800":"rgba(0,0,0,.1)"),background:theme===v?"rgba(255,184,0,.12)":"transparent",color:theme===v?"#FFB800":sc,cursor:"pointer",fontFamily:"inherit",display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+            <Ico n={ic} size={16} color={theme===v?"#FFB800":sc}/><span style={{fontSize:12,fontWeight:theme===v?700:400}}>{lb}</span>
+          </button>)}
+        </div>
+      </div>
+      <div>
+        <div style={{fontSize:11,fontWeight:700,marginBottom:8,textTransform:"uppercase",letterSpacing:.5,color:sc}}>{L?"Language":"语言"}</div>
+        <div style={{display:"flex",gap:8}}>
+          {[["zh","中文"],["en","English"]].map(([v,lb])=><button key={v} onClick={()=>setLang(v)} style={{flex:1,padding:"9px 8px",borderRadius:10,border:"1.5px solid "+(lang===v?"#FFB800":"rgba(0,0,0,.1)"),background:lang===v?"rgba(255,184,0,.12)":"transparent",color:lang===v?"#FFB800":sc,cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:lang===v?700:400}}>{lb}</button>)}
+        </div>
+      </div>
+    </React.Fragment>)}
+    {C("wifi",L?"Firebase Sync":"实时同步 Firebase",<React.Fragment>
+      <p style={{fontSize:12,color:sc,marginBottom:12,lineHeight:1.6}}>{L?"Enter your Firebase Realtime Database URL for cross-device sync (free).":"输入 Firebase Realtime Database URL 以启用跨设备实时同步（免费）。"}</p>
+      <div style={{display:"flex",gap:8}}>
+        <input value={fbInput} onChange={e=>setFbInput(e.target.value)} placeholder="https://your-project.firebaseio.com"
+          style={{flex:1,padding:"10px 13px",borderRadius:10,border:"1.5px solid "+(dk?"rgba(255,255,255,.1)":"rgba(0,0,0,.1)"),background:dk?"rgba(255,255,255,.05)":"rgba(0,0,0,.02)",color:tc,fontSize:13,outline:"none",fontFamily:"inherit"}}/>
+        <Btn onClick={saveFb}>{fbSaved?(L?"Saved ✓":"已保存 ✓"):(L?"Save":"保存")}</Btn>
+      </div>
+      {fbInput?<p style={{fontSize:11,color:"#10b981",marginTop:6}}>✅ Firebase {L?"configured":"已配置"}</p>:<p style={{fontSize:11,color:"#f59e0b",marginTop:6}}>⚠️ {L?"Not configured — data stays on this device only":"未配置 — 数据仅在此设备保存"}</p>}
+    </React.Fragment>)}
+    {C("ai",L?"AI Settings":"AI 设置",<p style={{fontSize:12,color:"#10b981"}}>✅ {L?"Pollinations AI (GPT-4o) — free, no API key needed":"使用 Pollinations AI（GPT-4o）— 完全免费，无需配置"}<br/>{L?"Add API Key in the AI chat tab for Claude.":"在 AI 对话页面可配置 Anthropic API Key 使用 Claude。"}</p>)}
+    {C("lock",L?"Change Password":"修改密码",<React.Fragment>
+      <Inp label={L?"Current Password":"原密码"} type="password" value={pw.old} onChange={v=>setPw(p=>({...p,old:v}))}/>
+      <Inp label={L?"New Password":"新密码"} type="password" value={pw.new1} onChange={v=>setPw(p=>({...p,new1:v}))}/>
+      <Inp label={L?"Confirm New Password":"确认新密码"} type="password" value={pw.new2} onChange={v=>setPw(p=>({...p,new2:v}))}/>
+      <Btn onClick={changePw}>{L?"Change Password":"更改密码"}</Btn>
+    </React.Fragment>)}
+  </div>;
+}
+
+
+function StudentPortal({user,onLogout}){
+  const {theme,data,setData}=useApp(); const dk=theme==="dark";
+  const [tab,setTab]=useState("home");
+  const [toast,setToast]=useState(null);
+  const show=(msg,type)=>setToast({msg,type:type||"success"});
+  const [selCls,setSelCls]=useState(null);
+  const [isMob,setIsMob]=useState(window.innerWidth<768);
+  useEffect(()=>{const h=()=>setIsMob(window.innerWidth<768);window.addEventListener("resize",h);return()=>window.removeEventListener("resize",h);},[]);
+  const cu=data.users.find(u=>u.id===user.id)||user;
+  const myClasses=data.classes.filter(cl=>(cu.enrolledClasses||[]).includes(cl.id));
+  useEffect(()=>{
+    const td=toDay();
+    const done=(data.dailyCheckins||[]).some(d=>d.studentId===user.id&&d.date===td);
+    if(!done){
+      const pts=data.checkinPts||10;
+      setData({...data,dailyCheckins:[...(data.dailyCheckins||[]),{studentId:user.id,date:td}],users:data.users.map(u=>u.id===user.id?{...u,points:(u.points||0)+pts}:u),pointTransactions:[...data.pointTransactions,{id:gid(),studentId:user.id,amount:pts,reason:"每日签到",timestamp:Date.now()}]});
+      setTimeout(()=>show("签到成功 +"+pts+"分","info"),800);
+    }
+  },[]);
+  const bg=dk?"#111111":"#F8F5EE";
+  const sb=dk?"#111827":"#fff"; const bd=dk?"rgba(255,255,255,.06)":"rgba(0,0,0,.06)"; const sc=dk?"#64748b":"#94a3b8";
+  const NAV=[
+    {id:"home",    ico:"classes",  lb:"班级"},
+    {id:"points",  ico:"lightning",lb:"积分"},
+    {id:"badges",  ico:"award",    lb:"徽章"},
+    {id:"ai",      ico:"ai",       lb:"AI"},
+    {id:"profile", ico:"profile",  lb:"我的"}
+  ];
+  return (
+    <div style={{display:"flex",flexDirection:"column",height:"100vh",background:bg,overflow:"hidden"}}>
+      <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",minHeight:0}}>
+        <div style={{flex:1,overflowY:"auto",paddingBottom:64}}>
+          {tab==="home"&&!selCls&&<SHome cu={cu} myClasses={myClasses} onEnterClass={id=>setSelCls(id)} show={show} isMob={isMob}/>}
+          {tab==="home"&&selCls&&<SClassroom classId={selCls} user={cu} onBack={()=>setSelCls(null)} show={show}/>}
+          {tab==="points"&&<SPoints user={cu}/>}
+          {tab==="badges"&&<SBadges user={cu} show={show}/>}
+          {tab==="ai"&&<SAI user={cu} myClasses={myClasses} show={show}/>}
+          {tab==="profile"&&<SProfile user={cu} show={show} onLogout={onLogout}/>}
+        </div>
+      </div>
+      <div style={{position:"fixed",bottom:0,left:0,right:0,background:sb,borderTop:"1px solid "+bd,display:"flex",zIndex:100,paddingBottom:"env(safe-area-inset-bottom,0px)"}}>
+        {NAV.map(n=>{const act=tab===n.id; return (
+          <button key={n.id} onClick={()=>{setTab(n.id);if(n.id!=="home")setSelCls(null);}} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:"8px 2px 6px",border:"none",background:"transparent",cursor:"pointer",fontFamily:"inherit",position:"relative"}}>
+            {act&&<div style={{position:"absolute",top:0,left:"50%",transform:"translateX(-50%)",width:22,height:2.5,borderRadius:2,background:"#FFB800"}}/>}
+            <Ico n={n.ico} size={21} color={act?"#FFB800":sc}/>
+            <span style={{fontSize:10,fontWeight:act?700:400,color:act?"#FFB800":sc}}>{n.lb}</span>
+          </button>
+        );})}
+      </div>
+      {toast&&<Toast msg={toast.msg} type={toast.type} onClose={()=>setToast(null)}/>}
+    </div>
+  );
+}
+
+
+function SClassroom({classId,user,onBack,show}){
+  const {theme,lang,data,setData}=useApp();
+  const dk=theme==="dark"; const tc=dk?"#f1f5f9":"#0f172a"; const sc=dk?"#64748b":"#94a3b8";
+  const L=lang==="en";
+  const [tabId,setTabId]=useState("feed");
+  const [modal,setModal]=useState(false);
+  const [imgLoading,setImgLoading]=useState(false);
+  const [pf,setPf]=useState({title:"",content:"",images:[]});
+    const fileInputRef=useRef(null);
+  const cls=data.classes.find(cl=>cl.id===classId);
+
+  useEffect(()=>{
+    if(cls&&cls.classLink&&cls.linkUpdatedAt){
+      const key=user.id+"_"+classId;
+      const seen=data.linkSeenAt||{};
+      if(!seen[key]||seen[key]<cls.linkUpdatedAt){
+        setData({...data,linkSeenAt:{...seen,[key]:Date.now()}});
+      }
+    }
+  },[]);
+
+  if(!cls)return null;
+
+  const pal=palOf(cls,data.classes.indexOf(cls));
+  const feed=data.posts.filter(p=>p.classId===classId&&p.type!=="forum").sort((a,b)=>b.createdAt-a.createdAt);
+  const forum=data.posts.filter(p=>p.classId===classId&&p.type==="forum").sort((a,b)=>b.createdAt-a.createdAt);
+
+  const submit=()=>{
+    if(!pf.content.trim()&&!pf.images.length)return;
+    setData({...data,posts:[...data.posts,{id:gid(),classId,type:"forum",title:pf.title.trim()||pf.content.slice(0,40)||"Post",content:pf.content,images:pf.images||[],authorId:user.id,createdAt:Date.now(),likes:[],url:"",fileData:null,fileName:"",materialType:""}]});
+    setPf({title:"",content:"",images:[]});setModal(false);show(L?"Posted!":"发布成功");
+  };
+
+  const handleImgs=async(files)=>{
+    if(!files||!files.length)return;
+    const avail=5-(pf.images.length);
+    if(avail<=0){show(L?"Max 5 images":"最多5张图片","warn");return;}
+    setImgLoading(true);
+    const imgs=[];
+    for(const f of Array.from(files).slice(0,avail)){
+      try{imgs.push(await resizeImg(f));}catch{}
+    }
+    setPf(prev=>({...prev,images:[...prev.images,...imgs]}));
+    setImgLoading(false);
+  };
+
+  // Trigger file picker directly — avoids label click issues on mobile/Safari
+  const pickImages=()=>{
+    if(fileInputRef.current){
+      fileInputRef.current.value="";
+      fileInputRef.current.click();
+    }
+  };
+
+  const ts=id=>({padding:"10px 16px",border:"none",background:"transparent",cursor:"pointer",fontWeight:tabId===id?700:400,color:tabId===id?"#FFB800":sc,fontSize:13,fontFamily:"inherit",borderBottom:tabId===id?"2.5px solid #FFB800":"2.5px solid transparent",whiteSpace:"nowrap",transition:"color .15s"});
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{background:"linear-gradient(135deg,"+pal[0]+","+pal[1]+")",padding:"14px 16px",display:"flex",alignItems:"center",gap:12}}>
+        <button onClick={onBack} style={{background:"rgba(255,255,255,.2)",border:"none",color:"#fff",padding:"7px 14px",borderRadius:50,cursor:"pointer",fontWeight:700,fontFamily:"inherit",fontSize:13,display:"flex",alignItems:"center",gap:6}}>
+          <Ico n="back" size={14} color="#fff"/><span>{L?"Back":"返回"}</span>
+        </button>
+        <div style={{flex:1}}>
+          <div style={{fontWeight:800,fontSize:16,color:"#fff"}}>{cls.name}</div>
+          {cls.desc&&<div style={{fontSize:12,color:"rgba(255,255,255,.75)"}}>{cls.desc}</div>}
+        </div>
+      </div>
+
+      {/* Live class banner */}
+
+      {/* Join meeting button */}
+      <div style={{padding:"8px 16px 4px",display:"flex",justifyContent:"flex-end"}}>
+        <button onClick={()=>setPreMeet(true)} style={{display:"flex",alignItems:"center",gap:7,padding:"7px 16px",borderRadius:50,border:"1.5px solid rgba(255,184,0,.4)",background:"rgba(255,184,0,.1)",color:"#FFB800",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+          <Ico n="classes" size={14} color="#FFB800"/><span>{L?"Join Meeting":"加入视频课堂"}</span>
+        </button>
+      </div>
+
+      {/* Class link */}
+      {cls.classLink&&(
+        <div style={{padding:"10px 16px",background:dk?"rgba(255,184,0,.1)":"rgba(99,102,241,.05)",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,flex:1,overflow:"hidden"}}>
+            <Ico n="link" size={14} color="#FFB800"/>
+            <span style={{fontSize:12,fontWeight:600,color:"#FFB800",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{cls.classLink}</span>
+          </div>
+          <Btn v="primary" size="sm" onClick={()=>window.open(cls.classLink,"_blank")}>{L?"Open":"打开"}</Btn>
+        </div>
+      )}
+
+      {/* Tabs */}
+      <div style={{display:"flex",borderBottom:"1px solid "+(dk?"rgba(255,255,255,.06)":"rgba(0,0,0,.06)"),overflowX:"auto"}}>
+        <button style={ts("feed")} onClick={()=>setTabId("feed")}>
+          {L?"Materials":"教材"} ({feed.length})
+        </button>
+        <button style={ts("forum")} onClick={()=>setTabId("forum")}>
+          {L?"Forum":"论坛"} ({forum.length})
+        </button>
+      </div>
+
+      {/* Content */}
+      <div style={{padding:"12px 14px"}}>
+        {tabId==="feed"&&(
+          <div>
+            {feed.length===0&&<p style={{color:sc,textAlign:"center",padding:"36px 0",fontSize:13}}>{L?"No materials yet":"暂无内容"}</p>}
+            {feed.map(post=><PostCard key={post.id} post={post} userId={user.id} onDelete={null} show={show}/>)}
+          </div>
+        )}
+        {tabId==="forum"&&(
+          <div>
+            <button onClick={()=>{setPf({title:"",content:"",images:[]});setModal(true);}}
+              style={{width:"100%",marginBottom:12,padding:"12px",borderRadius:12,border:"1.5px dashed rgba(99,102,241,.4)",background:"rgba(99,102,241,.05)",color:"#FFB800",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+              <Ico n="plus" size={16} color="#FFB800"/>
+              <span>{L?"New Post":"发帖"}</span>
+            </button>
+            {forum.length===0&&<p style={{color:sc,textAlign:"center",padding:"36px 0",fontSize:13}}>{L?"No posts yet":"暂无帖子"}</p>}
+            {forum.map(post=><PostCard key={post.id} post={post} userId={user.id} onDelete={null} show={show}/>)}
+          </div>
+        )}
+      </div>
+
+      {/* Post modal — NO link input, image upload via button ref */}
+      <Modal open={modal} title={L?"New Post":"发帖"} onClose={()=>setModal(false)} wide>
+        <Inp label={L?"Title (optional)":"标题（选填）"} value={pf.title} onChange={v=>setPf(f=>({...f,title:v}))} placeholder={L?"Post title...":"帖子标题..."}/>
+        <Txt label={L?"Content *":"内容 *"} value={pf.content} onChange={v=>setPf(f=>({...f,content:v}))} rows={4} placeholder={L?"Share your thoughts...":"分享你的想法..."}/>
+
+        {/* Images — button triggers ref click directly */}
+        <div style={{marginBottom:16}}>
+          <div style={{fontSize:11,fontWeight:700,marginBottom:8,textTransform:"uppercase",letterSpacing:.5,color:sc}}>
+            {L?"Images (optional, max 5)":"图片（选填，最多5张）"}
+          </div>
+
+          {/* Hidden real file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            style={{display:"none"}}
+            onChange={e=>{handleImgs(e.target.files);}}
+          />
+
+          {/* Visible button — calls ref.click() directly */}
+          <button
+            type="button"
+            onClick={pickImages}
+            disabled={imgLoading}
+            style={{display:"inline-flex",alignItems:"center",gap:8,padding:"9px 16px",borderRadius:10,border:"1.5px dashed rgba(99,102,241,.5)",background:imgLoading?"rgba(255,184,0,.06)":"rgba(255,184,0,.1)",cursor:imgLoading?"not-allowed":"pointer",fontSize:13,color:imgLoading?"#94a3b8":"#FFB800",fontWeight:600,fontFamily:"inherit",transition:"all .15s"}}>
+            <Ico n="image" size={16} color={imgLoading?"#94a3b8":"#FFB800"}/>
+            <span>{imgLoading?(L?"Processing...":"处理中..."):(L?"Add Images":"添加图片")} ({pf.images.length}/5)</span>
+          </button>
+
+          {pf.images.length>0&&(
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:10}}>
+              {pf.images.map((img,i)=>(
+                <div key={i} style={{position:"relative",width:68,height:68}}>
+                  <img src={img} style={{width:68,height:68,objectFit:"cover",borderRadius:10,display:"block"}}/>
+                  <button onClick={()=>setPf(f=>({...f,images:f.images.filter((_,j)=>j!==i)}))}
+                    style={{position:"absolute",top:-6,right:-6,background:"#ef4444",border:"2px solid #fff",color:"#fff",width:20,height:20,borderRadius:"50%",cursor:"pointer",fontSize:11,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+          <Btn v="ghost" onClick={()=>setModal(false)}>{L?"Cancel":"取消"}</Btn>
+          <Btn onClick={submit}>{L?"Post":"发布"}</Btn>
+        </div>
+      </Modal>
+
+    </div>
+  );
+}
+
+
+function SPoints({user}){
+  const {theme,lang,data}=useApp();const dk=theme==="dark";const tc=dk?"#f1f5f9":"#0f172a";const sc=dk?"#64748b":"#94a3b8";const L=lang==="en";
+  const cu=data.users.find(u=>u.id===user.id)||user;
+  const txs=data.pointTransactions.filter(tx=>tx.studentId===user.id).sort((a,b)=>b.timestamp-a.timestamp);
+  return <div style={{padding:16}}>
+    <div style={{background:"linear-gradient(135deg,#f59e0b,#f97316)",borderRadius:18,padding:"24px",textAlign:"center",marginBottom:16}}>
+      <div style={{display:"flex",justifyContent:"center",marginBottom:8}}><Ico n="points" size={40} color="#fff"/></div>
+      <div style={{fontSize:52,fontWeight:800,color:"#fff",lineHeight:1}}>{cu.points||0}</div>
+      <div style={{fontSize:14,color:"rgba(255,255,255,.75)",marginTop:6}}>{L?"Total Points":"总积分"}</div>
+    </div>
+    <div style={{fontWeight:700,fontSize:14,color:tc,marginBottom:12}}>{L?"Point History":"积分明细"}</div>
+    {txs.length===0&&<p style={{color:sc,textAlign:"center",padding:"28px 0",fontSize:13}}>{L?"No records yet":"暂无记录"}</p>}
+    {txs.map(tx=><div key={tx.id} style={{background:dk?"#1e293b":"#fff",borderRadius:12,padding:"11px 14px",marginBottom:8,display:"flex",justifyContent:"space-between",alignItems:"center",boxShadow:dk?"0 2px 8px rgba(0,0,0,.2)":"0 1px 6px rgba(0,0,0,.05)"}}>
+      <div><div style={{fontSize:13,fontWeight:600,color:tc}}>{tx.reason}</div><div style={{fontSize:11,color:sc}}>{new Date(tx.timestamp).toLocaleString()}</div></div>
+      <span style={{fontWeight:700,fontSize:15,color:tx.amount>=0?"#10b981":"#ef4444"}}>{tx.amount>=0?"+":""}{tx.amount}</span>
+    </div>)}
+  </div>;
+}
+
+
+function SBadges({user,show}){
+  const {theme,lang,data,setData}=useApp();const dk=theme==="dark";const tc=dk?"#f1f5f9":"#0f172a";const sc=dk?"#64748b":"#94a3b8";const L=lang==="en";
+  const cu=data.users.find(u=>u.id===user.id)||user;
+  const [cfRedeem,setCfRedeem]=useState(null);
+  const myClassIds=cu.enrolledClasses||[];
+  const available=data.badges.filter(b=>!b.classId||myClassIds.includes(b.classId));
+  const myBadgeIds=data.studentBadges.filter(sb=>sb.studentId===user.id).map(sb=>sb.badgeId);
+  const owned=available.filter(b=>myBadgeIds.includes(b.id));
+  const redeemable=available.filter(b=>!myBadgeIds.includes(b.id));
+  const doRedeem=(b)=>{if((cu.points||0)<b.points){show(L?"Not enough points":"积分不足","error");return;}setData({...data,users:data.users.map(u=>u.id===user.id?{...u,points:(u.points||0)-b.points}:u),studentBadges:[...data.studentBadges,{studentId:user.id,badgeId:b.id,earnedAt:Date.now()}],pointTransactions:[...data.pointTransactions,{id:gid(),studentId:user.id,amount:-b.points,reason:(L?"Redeemed badge: ":"兑换徽章: ")+b.name,timestamp:Date.now()}]});setCfRedeem(null);show(L?"Redeemed!":"兑换成功！");};
+  return <div style={{padding:16}}>
+    <div style={{fontWeight:700,fontSize:16,color:tc,marginBottom:14,display:"flex",alignItems:"center",gap:8}}><Ico n="award" size={18} color="#f59e0b"/>{L?"My Badges":"我的徽章"}</div>
+    {owned.length===0&&<div style={{textAlign:"center",padding:"24px 0",color:sc,fontSize:13,marginBottom:16}}>{L?"No badges yet — keep learning!":"还没有徽章，继续努力！"}</div>}
+    {owned.length>0&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(110px,1fr))",gap:10,marginBottom:20}}>
+      {owned.map(b=><div key={b.id} style={{background:dk?"#1e293b":"#fff",borderRadius:14,padding:"14px 10px",textAlign:"center",boxShadow:dk?"0 2px 8px rgba(0,0,0,.2)":"0 2px 8px rgba(0,0,0,.05)"}}>
+        <div style={{fontSize:34,marginBottom:6}}>{b.icon}</div>
+        <div style={{fontSize:12,fontWeight:700,color:tc,marginBottom:2}}>{b.name}</div>
+        {b.desc&&<div style={{fontSize:10,color:sc,lineHeight:1.4}}>{b.desc}</div>}
+      </div>)}
+    </div>}
+    {redeemable.length>0&&<React.Fragment>
+      <div style={{fontWeight:700,fontSize:14,color:tc,marginBottom:12,display:"flex",alignItems:"center",gap:8}}><Ico n="trending" size={16} color="#FFB800"/>{L?"Earn Badges":"可兑换徽章"}</div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:10}}>
+        {redeemable.map(b=>{const can=(cu.points||0)>=b.points;return <div key={b.id} style={{background:dk?"#1e293b":"#fff",borderRadius:14,padding:"14px 10px",textAlign:"center",opacity:can?1:.55,boxShadow:dk?"0 2px 8px rgba(0,0,0,.2)":"0 2px 8px rgba(0,0,0,.05)"}}>
+          <div style={{fontSize:32,marginBottom:6}}>{b.icon}</div>
+          <div style={{fontSize:12,fontWeight:700,color:tc,marginBottom:4}}>{b.name}</div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:4,marginBottom:8}}><Ico n="points" size={11} color="#f59e0b"/><span style={{fontSize:11,fontWeight:700,color:"#f59e0b"}}>{b.points}</span></div>
+          <Btn v="primary" size="sm" fw onClick={()=>{if(!can){show(L?"Not enough points":"积分不足","error");return;}setCfRedeem(b);}} disabled={!can}>{L?"Redeem":"兑换"}</Btn>
+        </div>;})}
+      </div>
+    </React.Fragment>}
+    {cfRedeem&&<ConfirmDlg msg={(L?"Redeem ":"兑换「")+cfRedeem.name+(L?" for ":"」? 需要 ")+cfRedeem.points+(L?" pts?":"")} onOk={()=>doRedeem(cfRedeem)} onNo={()=>setCfRedeem(null)}/>}
+  </div>;
+}
+
+
+function SAI({user,myClasses,show}){
+  const {theme,lang,data,setData}=useApp();
+  const dk=theme==="dark"; const tc=dk?"#f1f5f9":"#0f172a"; const sc=dk?"#64748b":"#94a3b8";
+  const L=lang==="en";
+  const [msgs,setMsgs]=useState([{id:"sys0",role:"assistant",content:L?"Hi! I'm your AI tutor 👋 Ask me anything, or upload a photo to analyze!":"你好！我是你的AI学习助手 👋 问我任何问题，也可以上传图片让我解析！",time:Date.now()}]);
+  const [input,setInput]=useState("");
+  const [loading,setLoading]=useState(false);
+  const [selC,setSelC]=useState((myClasses[0]&&myClasses[0].id)||"");
+  const [showSaved,setShowSaved]=useState(false);
+  const [imgData,setImgData]=useState(null);
+  const [imgPreview,setImgPreview]=useState(null);
+  const [apiKeyInput,setApiKeyInput]=useState(()=>localStorage.getItem("th_aikey")||"");
+  const [showKeyInput,setShowKeyInput]=useState(false);
+  const ref=useRef(null);
+  const td=toDay();
+
+  useEffect(()=>{if(ref.current)ref.current.scrollTop=ref.current.scrollHeight;},[msgs]);
+
+  const getSaved=()=>JSON.parse(localStorage.getItem("th_saved_"+user.id)||"[]");
+
+  const saveMsg=(msg)=>{
+    const existing=getSaved();
+    if(existing.find(m=>m.id===msg.id)){
+      localStorage.setItem("th_saved_"+user.id,JSON.stringify(existing.filter(m=>m.id!==msg.id)));
+      show(L?"Removed from saved":"已取消收藏","warn");
+    }else{
+      localStorage.setItem("th_saved_"+user.id,JSON.stringify([...existing,{...msg,savedAt:Date.now()}]));
+      show(L?"Saved!":"已收藏");
+    }
+    setMsgs(m=>[...m]);
+  };
+
+  const isSaved=(id)=>getSaved().some(m=>m.id===id);
+
+  const handleImg=(file)=>{
+    if(!file)return;
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      const b64=ev.target.result.split(",")[1];
+      setImgData({b64,type:file.type||"image/jpeg"});
+      setImgPreview(ev.target.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const send=async()=>{
+    if((!input.trim()&&!imgData)||loading)return;
+    const userMsg={id:gid(),role:"user",content:input.trim()||(imgData?"(Photo attached)":""),img:imgPreview,time:Date.now()};
+    const newMsgs=[...msgs,userMsg];
+    setMsgs(newMsgs); setInput(""); const savedImg=imgData; setImgData(null); setImgPreview(null); setLoading(true);
+
+    const done=(data.dailyAIQ||[]).some(d=>d.studentId===user.id&&d.date===td);
+    if(!done){const pts=data.aiPts||15;setData({...data,dailyAIQ:[...(data.dailyAIQ||[]),{studentId:user.id,date:td}],users:data.users.map(u=>u.id===user.id?{...u,points:(u.points||0)+pts}:u),pointTransactions:[...data.pointTransactions,{id:gid(),studentId:user.id,amount:pts,reason:L?"Daily AI":"每日AI提问",timestamp:Date.now()}]});show("+"+pts+" pts");}
+
+    const apiKey=localStorage.getItem("th_aikey")||"";
+    const cn=(myClasses.find(cl=>cl.id===selC)||{name:"general"}).name;
+    const sysPrompt=L?"You are an encouraging bilingual AI tutor. Student class: \""+cn+"\". Be concise and supportive. If given an image, analyze it and help the student understand.":"你是一位鼓励学生的双语AI学习助手。学生班级：「"+cn+"」。回答简洁、积极。如果收到图片，请帮助学生理解图片内容。";
+
+    const apiMsgs=newMsgs.filter(m=>m.role==="user"||m.role==="assistant").slice(-8).map(m=>{
+      if(m.role==="user"&&m.img&&m.img.includes("base64,")){
+        const b64=m.img.split(",")[1];
+        const mtype=m.img.startsWith("data:image/png")?"image/png":"image/jpeg";
+        return {role:"user",content:[{type:"image",source:{type:"base64",media_type:mtype,data:b64}},{type:"text",text:m.content||"What is in this image?"}]};
+      }
+      return {role:m.role,content:typeof m.content==="string"?m.content:"(content)"};
+    });
+
+    try{
+      let reply="";
+      if(apiKey){
+        const resp=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":apiKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-opus-4-5",max_tokens:1024,system:sysPrompt,messages:apiMsgs})});
+        if(!resp.ok){const e=await resp.json();throw new Error(e.error&&e.error.message||"API error "+resp.status);}
+        const d=await resp.json();
+        reply=d.content&&d.content[0]&&d.content[0].text||"(no response)";
+      }else{
+        const textMsgs=apiMsgs.map(m=>({role:m.role,content:typeof m.content==="string"?m.content:((Array.isArray(m.content)?m.content.find(x=>x.type==="text"):null)||{text:"(image)"}).text}));
+        const resp=await fetch("https://text.pollinations.ai/openai",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"openai-large",messages:[{role:"system",content:sysPrompt},...textMsgs],seed:42})});
+        if(!resp.ok)throw new Error("HTTP "+resp.status);
+        const d=await resp.json();
+        reply=(d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content)||"(no response)";
+      }
+      setMsgs([...newMsgs,{id:gid(),role:"assistant",content:reply,time:Date.now()}]);
+    }catch(e){
+      setMsgs([...newMsgs,{id:gid(),role:"assistant",content:"❌ "+(e.message||"Error")+(apiKey?"\n\n请检查API Key是否正确。":""),time:Date.now()}]);
+    }
+    setLoading(false);
+  };
+
+  const savedList=getSaved();
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 64px)",minHeight:360,background:"inherit"}}>
+      {/* Top bar */}
+      <div style={{padding:"10px 14px",borderBottom:"1px solid "+(dk?"rgba(255,255,255,.06)":"rgba(0,0,0,.06)"),display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap",background:dk?"#111827":"#fff"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <div style={{width:32,height:32,borderRadius:10,background:"linear-gradient(135deg,#FFB800,#FF8C00)",display:"flex",alignItems:"center",justifyContent:"center"}}><Ico n="ai" size={16} color="#fff"/></div>
+          <div>
+            <div style={{fontWeight:700,fontSize:14,color:dk?"#f1f5f9":"#0f172a"}}>{L?"AI Tutor":"AI 助手"}</div>
+            <div style={{fontSize:10,color:sc}}>{localStorage.getItem("th_aikey")?"✅ Claude API":"Pollinations AI · Free"}</div>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+          {myClasses.length>0&&<select value={selC} onChange={e=>setSelC(e.target.value)} style={{padding:"5px 9px",borderRadius:8,border:"1.5px solid "+(dk?"rgba(255,255,255,.1)":"rgba(0,0,0,.1)"),background:dk?"#1e293b":"#fff",color:dk?"#f1f5f9":"#0f172a",fontSize:12,outline:"none",cursor:"pointer",fontFamily:"inherit"}}>{myClasses.map(cl=><option key={cl.id} value={cl.id}>{cl.name}</option>)}</select>}
+          <button onClick={()=>setShowSaved(v=>!v)} style={{display:"flex",alignItems:"center",gap:5,padding:"5px 10px",borderRadius:8,border:"1.5px solid "+(showSaved?"#FFB800":"rgba(0,0,0,.1)"),background:showSaved?"rgba(255,184,0,.12)":"transparent",color:showSaved?"#FFB800":sc,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+            <Ico n="savebookmark" size={13} color={showSaved?"#FFB800":sc}/><span>{savedList.length}</span>
+          </button>
+          <button onClick={()=>setShowKeyInput(v=>!v)} style={{display:"flex",alignItems:"center",gap:5,padding:"5px 10px",borderRadius:8,border:"1.5px solid rgba(0,0,0,.1)",background:"transparent",color:sc,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>
+            <Ico n="unlock" size={13} color={localStorage.getItem("th_aikey")?"#22c55e":sc}/><span>API Key</span>
+          </button>
+        </div>
+      </div>
+
+      {/* API Key input */}
+      {showKeyInput&&(
+        <div style={{padding:"10px 14px",borderBottom:"1px solid "+(dk?"rgba(255,255,255,.05)":"rgba(0,0,0,.06)"),background:dk?"rgba(255,184,0,.08)":"rgba(99,102,241,.03)"}}>
+          <div style={{fontSize:11,color:sc,marginBottom:6}}>Anthropic API Key → 使用 Claude（支持图片识别）/ Claude API with vision support</div>
+          <div style={{display:"flex",gap:7}}>
+            <input value={apiKeyInput} onChange={e=>setApiKeyInput(e.target.value)} type="password" placeholder="sk-ant-api03-..."
+              style={{flex:1,padding:"8px 11px",borderRadius:9,border:"1.5px solid "+(dk?"rgba(255,255,255,.1)":"rgba(0,0,0,.1)"),background:dk?"rgba(255,255,255,.05)":"#fff",color:dk?"#f1f5f9":"#0f172a",fontSize:12,outline:"none",fontFamily:"inherit"}}/>
+            <Btn v="primary" size="sm" onClick={()=>{localStorage.setItem("th_aikey",apiKeyInput.trim());setShowKeyInput(false);show(apiKeyInput.trim()?"API Key 已保存":"已清除");}}>Save</Btn>
+            {localStorage.getItem("th_aikey")&&<Btn v="danger" size="sm" onClick={()=>{localStorage.removeItem("th_aikey");setApiKeyInput("");show("Cleared","warn");}}>×</Btn>}
+          </div>
+        </div>
+      )}
+
+      {/* Saved messages panel */}
+      {showSaved&&(
+        <div style={{padding:"10px 14px",borderBottom:"1px solid "+(dk?"rgba(255,255,255,.05)":"rgba(0,0,0,.06)"),maxHeight:180,overflowY:"auto",background:dk?"rgba(255,255,255,.02)":"rgba(0,0,0,.01)"}}>
+          <div style={{fontSize:11,fontWeight:700,color:sc,marginBottom:8,textTransform:"uppercase",letterSpacing:.5}}>{L?"Saved":"已收藏"} ({savedList.length})</div>
+          {savedList.length===0&&<p style={{color:sc,fontSize:12}}>No saved messages yet</p>}
+          {savedList.map(m=>(
+            <div key={m.id} style={{background:dk?"rgba(255,255,255,.04)":"rgba(0,0,0,.03)",borderRadius:9,padding:"8px 10px",marginBottom:6,position:"relative"}}>
+              <div style={{fontSize:12,color:dk?"#cbd5e1":"#374151",lineHeight:1.5,paddingRight:20}}>{m.content.slice(0,150)}{m.content.length>150?"...":""}</div>
+              <button onClick={()=>{saveMsg(m);setShowSaved(true);}} style={{position:"absolute",top:6,right:6,background:"none",border:"none",cursor:"pointer"}}><Ico n="close" size={12} color="#ef4444"/></button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Messages */}
+      <div ref={ref} style={{flex:1,overflowY:"auto",padding:"12px 14px",display:"flex",flexDirection:"column",gap:10}}>
+        {msgs.map(m=>(
+          <div key={m.id} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start",alignItems:"flex-end",gap:8}}>
+            {m.role==="assistant"&&<div style={{width:30,height:30,borderRadius:10,background:"linear-gradient(135deg,#FFB800,#FF8C00)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Ico n="ai" size={15} color="#fff"/></div>}
+            <div style={{maxWidth:"78%",position:"relative"}}>
+              {m.img&&<img src={m.img} style={{maxWidth:"100%",maxHeight:160,borderRadius:"12px 12px 0 0",display:"block",objectFit:"cover"}}/>}
+              <div style={{padding:"11px 14px",borderRadius:m.role==="user"?"16px 16px 4px 16px":"16px 16px 16px 4px",background:m.role==="user"?"linear-gradient(135deg,#FFB800,#FF8C00)":dk?"#1a2035":"#f1f5f9",color:m.role==="user"?"#fff":dk?"#e2e8f0":"#1e293b",fontSize:13,lineHeight:1.7,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>
+                {m.content}
+              </div>
+              {m.role==="assistant"&&(
+                <button onClick={()=>saveMsg(m)} title={isSaved(m.id)?"Remove bookmark":"Save"}
+                  style={{position:"absolute",bottom:-2,right:4,background:dk?"#1e293b":"#fff",border:"1px solid "+(dk?"rgba(255,255,255,.1)":"rgba(0,0,0,.08)"),borderRadius:"50%",width:24,height:24,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 1px 4px rgba(0,0,0,.12)"}}>
+                  <Ico n="savebookmark" size={12} color={isSaved(m.id)?"#FFB800":sc}/>
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+        {loading&&(
+          <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
+            <div style={{width:30,height:30,borderRadius:10,background:"linear-gradient(135deg,#FFB800,#FF8C00)",display:"flex",alignItems:"center",justifyContent:"center"}}><Ico n="ai" size={15} color="#fff"/></div>
+            <div style={{padding:"12px 16px",borderRadius:"16px 16px 16px 4px",background:dk?"#1a2035":"#f1f5f9",display:"flex",gap:5,alignItems:"center"}}>
+              {[0,1,2].map(i=><div key={i} style={{width:7,height:7,borderRadius:"50%",background:"#FFB800",animation:"bounce 1.2s "+(i*.2)+"s infinite"}}/>)}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Image preview */}
+      {imgPreview&&(
+        <div style={{padding:"6px 14px 0",display:"flex",alignItems:"center",gap:10,borderTop:"1px solid "+(dk?"rgba(255,255,255,.06)":"rgba(0,0,0,.06)")}}>
+          <img src={imgPreview} style={{height:48,width:48,objectFit:"cover",borderRadius:8,display:"block"}}/>
+          <span style={{fontSize:12,color:sc,flex:1}}>{L?"Image ready to send":"图片准备发送"}</span>
+          <button onClick={()=>{setImgData(null);setImgPreview(null);}} style={{background:"none",border:"none",cursor:"pointer"}}><Ico n="close" size={16} color="#ef4444"/></button>
+        </div>
+      )}
+
+      {/* Input bar */}
+      <div style={{padding:"10px 12px",display:"flex",gap:7,borderTop:"1px solid "+(dk?"rgba(255,255,255,.06)":"rgba(0,0,0,.06)"),alignItems:"flex-end",background:dk?"#111827":"#fff"}}>
+        {/* Camera button (mobile: capture photo; desktop: open file) */}
+        <React.Fragment>
+          <input type="file" accept="image/*" capture="environment" id="ai-cam" style={{display:"none"}} onChange={e=>{if(e.target.files[0]){handleImg(e.target.files[0]);}e.target.value="";}}/>
+          <label htmlFor="ai-cam" title="Take photo / 拍照">
+            <div style={{width:40,height:40,borderRadius:12,border:"1.5px solid "+(dk?"rgba(255,255,255,.1)":"rgba(0,0,0,.1)"),background:dk?"rgba(255,255,255,.05)":"rgba(0,0,0,.02)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}>
+              <Ico n="camera" size={18} color="#FFB800"/>
+            </div>
+          </label>
+        </React.Fragment>
+        {/* Gallery button */}
+        <React.Fragment>
+          <input type="file" accept="image/*" id="ai-gal" style={{display:"none"}} onChange={e=>{if(e.target.files[0]){handleImg(e.target.files[0]);}e.target.value="";}}/>
+          <label htmlFor="ai-gal" title="Upload image / 上传图片">
+            <div style={{width:40,height:40,borderRadius:12,border:"1.5px solid "+(dk?"rgba(255,255,255,.1)":"rgba(0,0,0,.1)"),background:dk?"rgba(255,255,255,.05)":"rgba(0,0,0,.02)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}>
+              <Ico n="image" size={18} color="#E5A500"/>
+            </div>
+          </label>
+        </React.Fragment>
+        <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&!e.shiftKey&&(e.preventDefault(),send())}
+          placeholder={L?"Ask anything...":"向AI提问..."}
+          style={{flex:1,padding:"11px 16px",borderRadius:50,border:"1.5px solid "+(dk?"rgba(255,255,255,.1)":"rgba(0,0,0,.1)"),background:dk?"rgba(255,255,255,.05)":"rgba(0,0,0,.02)",color:dk?"#f1f5f9":"#0f172a",fontSize:13,outline:"none",fontFamily:"inherit"}}/>
+        <button onClick={send} disabled={loading||(!input.trim()&&!imgData)}
+          style={{width:42,height:42,borderRadius:14,border:"none",background:loading||(!input.trim()&&!imgData)?"rgba(99,102,241,.25)":"linear-gradient(135deg,#FFB800,#FF8C00)",display:"flex",alignItems:"center",justifyContent:"center",cursor:loading||(!input.trim()&&!imgData)?"not-allowed":"pointer",flexShrink:0}}>
+          <Ico n="send" size={18} color="#fff"/>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
+function SProfile({user,show,onLogout}){
+  const {theme,setTheme,lang,setLang,data,setData}=useApp();
+  const dk=theme==="dark"; const tc=dk?"#f1f5f9":"#0f172a"; const sc=dk?"#64748b":"#94a3b8";
+  const [bio,setBio]=useState((data.users.find(u=>u.id===user.id)||user).bio||"");
+  const [cfOut,setCfOut]=useState(false);
+  const [showAv,setShowAv]=useState(false);
+  const cu=data.users.find(u=>u.id===user.id)||user;
+  const AVATARS=["🦊","🐺","🦁","🐯","🐻","🐼","🐨","🦝","🦉","🦋","🐸","🦄","🐲","🦖","🌙","⚡","🔥","🌊","🌸","🍀","🎯","💎","🚀","🎮","🎭","🎪","🌈","🍭","🎸","🏆"];
+  const save=(updates)=>setData({...data,users:data.users.map(u=>u.id===user.id?{...u,...updates}:u)});
+  const myBadges=data.studentBadges.filter(sb=>sb.studentId===user.id).length;
+  const myClasses=(cu.enrolledClasses||[]).length;
+  return (
+    <div style={{overflowY:"auto",height:"100%",paddingBottom:80}}>
+      <div style={{background:"linear-gradient(135deg,#FFB800,#FF8C00)",padding:"28px 20px 24px",textAlign:"center",position:"relative"}}>
+        <div style={{position:"relative",display:"inline-block",marginBottom:14}}>
+          <div onClick={()=>setShowAv(v=>!v)} style={{width:88,height:88,borderRadius:24,background:"rgba(255,255,255,.18)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:50,border:"3px solid rgba(255,255,255,.4)",cursor:"pointer",userSelect:"none"}}>{cu.avatar}</div>
+          <button onClick={()=>setShowAv(v=>!v)} style={{position:"absolute",bottom:-2,right:-2,width:28,height:28,borderRadius:"50%",background:"#fff",border:"2px solid #6366f1",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(0,0,0,.2)",fontSize:13,lineHeight:1}}>✏️</button>
+        </div>
+        {showAv&&(
+          <div style={{background:"rgba(0,0,0,.35)",backdropFilter:"blur(12px)",borderRadius:16,padding:12,marginBottom:14,display:"flex",gap:6,flexWrap:"wrap",justifyContent:"center"}}>
+            {AVATARS.map(av=>(
+              <button key={av} onClick={()=>{save({avatar:av});setShowAv(false);}} style={{fontSize:30,width:48,height:48,borderRadius:12,border:"2.5px solid "+(cu.avatar===av?"#fff":"transparent"),background:cu.avatar===av?"rgba(255,255,255,.25)":"rgba(255,255,255,.08)",cursor:"pointer",transition:"all .15s"}}>{av}</button>
+            ))}
+          </div>
+        )}
+        <div style={{fontWeight:800,fontSize:20,color:"#fff"}}>{cu.name}</div>
+        <div style={{fontSize:13,color:"rgba(255,255,255,.7)",marginTop:3}}>@{cu.username}</div>
+        <div style={{display:"flex",justifyContent:"center",gap:24,marginTop:16}}>
+          {[["⭐",(cu.points||0),lang==="zh"?"积分":"Pts"],["🏫",myClasses,lang==="zh"?"班级":"Class"],["🏅",myBadges,lang==="zh"?"徽章":"Badges"]].map(([ic,v,lb])=>(
+            <div key={lb} style={{textAlign:"center"}}>
+              <div style={{fontSize:20,fontWeight:800,color:"#fff"}}>{ic} {v}</div>
+              <div style={{fontSize:11,color:"rgba(255,255,255,.65)",marginTop:2}}>{lb}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{padding:"16px 16px 0"}}>
+        <Card style={{padding:"18px 20px",marginBottom:12}}>
+          <div style={{fontSize:11,fontWeight:700,marginBottom:10,textTransform:"uppercase",letterSpacing:.6,color:sc}}>个人简介 / Bio</div>
+          <textarea value={bio} onChange={e=>setBio(e.target.value)} rows={3} placeholder={lang==="zh"?"介绍一下自己...":"Tell something about yourself..."}
+            style={{width:"100%",padding:"10px 13px",borderRadius:10,border:"1.5px solid "+(dk?"rgba(255,255,255,.1)":"rgba(0,0,0,.1)"),background:dk?"rgba(255,255,255,.04)":"rgba(0,0,0,.02)",color:tc,fontSize:13,outline:"none",resize:"vertical",fontFamily:"inherit",boxSizing:"border-box",marginBottom:10}}/>
+          <Btn v="primary" size="sm" onClick={()=>{save({bio});show(lang==="zh"?"已保存":"Saved");}}>{lang==="zh"?"保存简介":"Save Bio"}</Btn>
+        </Card>
+        <Card style={{padding:"18px 20px",marginBottom:12}}>
+          <div style={{fontSize:11,fontWeight:700,marginBottom:14,textTransform:"uppercase",letterSpacing:.6,color:sc}}>外观 / Appearance</div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+            <span style={{fontSize:13,color:tc}}>{lang==="zh"?"主题":"Theme"}</span>
+            <div style={{display:"flex",gap:6}}>
+              {[["light","☀️"],["dark","🌙"],["system","⚙️"]].map(([v,ic])=>(
+                <button key={v} onClick={()=>setTheme(v)} style={{width:38,height:38,borderRadius:10,border:"1.5px solid "+(theme===v?"#FFB800":"rgba(0,0,0,.1)"),background:theme===v?"rgba(255,184,0,.15)":"transparent",cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>{ic}</button>
+              ))}
+            </div>
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span style={{fontSize:13,color:tc}}>{lang==="zh"?"语言":"Language"}</span>
+            <div style={{display:"flex",gap:6}}>
+              {[["zh","中文"],["en","EN"]].map(([v,lb])=>(
+                <button key={v} onClick={()=>setLang(v)} style={{padding:"7px 14px",borderRadius:10,border:"1.5px solid "+(lang===v?"#FFB800":"rgba(0,0,0,.1)"),background:lang===v?"rgba(255,184,0,.15)":"transparent",color:lang===v?"#FFB800":sc,fontWeight:lang===v?700:400,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>{lb}</button>
+              ))}
+            </div>
+          </div>
+        </Card>
+        <Btn v="danger" fw onClick={()=>setCfOut(true)} style={{borderRadius:12}}>
+          {lang==="zh"?"退出登录":"Sign Out"}
+        </Btn>
+      </div>
+      {cfOut&&<ConfirmDlg msg={lang==="zh"?"确认退出登录？":"Sign out?"} onOk={onLogout} onNo={()=>setCfOut(false)}/>}
+    </div>
+  );
+}
+
+
+function SHome({cu,myClasses,onEnterClass,show,isMob}){
+  const {theme,lang,data}=useApp();
+  const dk=theme==="dark";
+  const tc=dk?"#f1f5f9":"#0f172a";
+  const sc=dk?"#64748b":"#94a3b8";
+  const L=lang==="en";
+  const myBadgeIds=data.studentBadges.filter(function(sb){return sb.studentId===cu.id;}).map(function(sb){return sb.badgeId;});
+  const myBadges=data.badges.filter(function(b){return myBadgeIds.includes(b.id);}).slice(0,6);
+  const now=new Date();
+  const yr=now.getFullYear();
+  const mo=now.getMonth();
+  const firstDay=new Date(yr,mo,1).getDay();
+  const daysInMonth=new Date(yr,mo+1,0).getDate();
+  const todayDate=now.getDate();
+  const moStr=String(mo+1).padStart(2,"0");
+  const checkedDays=new Set(
+    (data.dailyCheckins||[])
+      .filter(function(d){return d.studentId===cu.id&&d.date.startsWith(yr+"-"+moStr);})
+      .map(function(d){return parseInt(d.date.slice(-2));})
+  );
+  const monthName=L?now.toLocaleString("en",{month:"long"}):["一","二","三","四","五","六","七","八","九","十","十一","十二"][mo]+"月";
+  const weekLabels=L?["Su","Mo","Tu","We","Th","Fr","Sa"]:["日","一","二","三","四","五","六"];
+  return (
+    <div style={{padding:"14px 14px 0"}}>
+      <div style={{background:"linear-gradient(135deg,#FFB800,#FF8C00)",borderRadius:20,padding:"20px",marginBottom:14,position:"relative",overflow:"hidden"}}>
+        <div style={{position:"absolute",top:-20,right:-20,width:100,height:100,borderRadius:"50%",background:"rgba(255,255,255,.07)"}}/>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16,position:"relative"}}>
+          <div style={{width:50,height:50,borderRadius:15,background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,fontWeight:800,color:"#fff",border:"2px solid rgba(255,255,255,.3)"}}>{cu.avatar}</div>
+          <div>
+            <div style={{fontWeight:800,fontSize:17,color:"#fff"}}>{L?"Hello, ":"你好，"}{cu.name}！</div>
+            <div style={{fontSize:12,color:"rgba(255,255,255,.7)",marginTop:2}}>{L?"Keep it up!":"继续加油 💪"}</div>
+          </div>
+        </div>
+        <div style={{display:"flex"}}>
+          {[{n:"lightning",v:cu.points||0,l:L?"Points":"积分"},{n:"classes",v:myClasses.length,l:L?"Classes":"班级"},{n:"award",v:myBadges.length,l:L?"Badges":"徽章"},{n:"check",v:checkedDays.size,l:L?"Days":"签到"}].map(function(st,i){
+            return (
+              <div key={st.l} style={{flex:1,textAlign:"center",borderLeft:i>0?"1px solid rgba(255,255,255,.15)":"none"}}>
+                <div style={{display:"flex",justifyContent:"center",marginBottom:2}}><Ico n={st.n} size={13} color="rgba(255,255,255,.7)"/></div>
+                <div style={{fontSize:20,fontWeight:800,color:"#fff"}}>{st.v}</div>
+                <div style={{fontSize:10,color:"rgba(255,255,255,.6)"}}>{st.l}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div style={{background:dk?"#1e293b":"#fff",borderRadius:16,padding:"14px 16px",marginBottom:14,boxShadow:dk?"0 2px 12px rgba(0,0,0,.2)":"0 2px 10px rgba(0,0,0,.05)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <div style={{display:"flex",alignItems:"center",gap:7}}>
+            <Ico n="calendar" size={15} color="#FFB800"/>
+            <span style={{fontWeight:700,fontSize:14,color:tc}}>{monthName} {yr}</span>
+          </div>
+          <span style={{fontSize:12,color:"#FFB800",fontWeight:600}}>{checkedDays.size} {L?"days":"天"}</span>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3,marginBottom:4}}>
+          {weekLabels.map(function(d){return <div key={d} style={{textAlign:"center",fontSize:10,color:sc,fontWeight:600,padding:"2px 0"}}>{d}</div>;})}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3}}>
+          {Array.from({length:firstDay}).map(function(_,i){return <div key={"e"+i}/>;})}
+          {Array.from({length:daysInMonth}).map(function(_,i){
+            const day=i+1;
+            const isToday=day===todayDate;
+            const checked=checkedDays.has(day);
+            const isPast=day<todayDate;
+            return (
+              <div key={day} style={{aspectRatio:"1",borderRadius:7,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:checked||isToday?700:400,background:checked?"linear-gradient(135deg,#FFB800,#FF8C00)":isToday?"rgba(255,184,0,.15)":"transparent",color:checked?"#fff":isToday?"#FFB800":isPast?sc:tc,border:isToday&&!checked?"1.5px solid rgba(255,184,0,.4)":"1.5px solid transparent"}}>
+                {checked?<Ico n="check" size={10} color="#fff"/>:day}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {myBadges.length>0&&(
+        <div style={{background:dk?"#1e293b":"#fff",borderRadius:16,padding:"14px 16px",marginBottom:14,boxShadow:dk?"0 2px 12px rgba(0,0,0,.2)":"0 2px 10px rgba(0,0,0,.05)"}}>
+          <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:12}}>
+            <Ico n="award" size={15} color="#f59e0b"/>
+            <span style={{fontWeight:700,fontSize:14,color:tc}}>{L?"My Badges":"我的徽章"}</span>
+          </div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            {myBadges.map(function(b){
+              const earned=data.studentBadges.find(function(sb){return sb.studentId===cu.id&&sb.badgeId===b.id;});
+              return (
+                <div key={b.id} style={{textAlign:"center",padding:"10px 12px",borderRadius:12,background:dk?"rgba(255,255,255,.04)":"rgba(0,0,0,.02)",border:"1px solid "+(dk?"rgba(255,255,255,.06)":"rgba(0,0,0,.05)"),minWidth:60}}>
+                  <div style={{fontSize:26,marginBottom:4}}>{b.icon==="star"?"⭐":b.icon==="award"?"🏆":b.icon==="fire"?"🔥":"🏅"}</div>
+                  <div style={{fontSize:11,fontWeight:600,color:tc,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:56}}>{b.name}</div>
+                  {earned&&<div style={{fontSize:9,color:sc,marginTop:2}}>{new Date(earned.earnedAt).toLocaleDateString()}</div>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+        <Ico n="classes" size={15} color="#FFB800"/>
+        <span style={{fontWeight:700,fontSize:14,color:tc}}>{L?"My Classes":"我的班级"}</span>
+      </div>
+      {myClasses.length===0&&(
+        <div style={{textAlign:"center",padding:"32px 0",color:sc}}>
+          <Ico n="book" size={32} color={sc}/>
+          <p style={{marginTop:12,fontSize:13}}>{L?"No classes yet":"暂无班级"}</p>
+        </div>
+      )}
+      {myClasses.map(function(cls,i){
+        const pal=palOf(cls,i);
+        const postCount=data.posts.filter(function(p){return p.classId===cls.id;}).length;
+        const hasNew=cls.classLink&&cls.linkUpdatedAt&&(!data.linkSeenAt||!data.linkSeenAt[cu.id+"_"+cls.id]||data.linkSeenAt[cu.id+"_"+cls.id]<cls.linkUpdatedAt);
+        return (
+          <div key={cls.id} style={{borderRadius:14,overflow:"hidden",marginBottom:10,boxShadow:dk?"0 4px 14px rgba(0,0,0,.25)":"0 2px 10px rgba(0,0,0,.07)",cursor:"pointer"}} onClick={function(){onEnterClass(cls.id);}}>
+            <div style={{background:"linear-gradient(135deg,"+pal[0]+","+pal[1]+")",padding:"14px 16px",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+              <div>
+                <div style={{fontWeight:700,fontSize:14,color:"#fff"}}>{cls.name}</div>
+                {cls.desc&&<div style={{fontSize:11,color:"rgba(255,255,255,.75)",marginTop:2}}>{cls.desc}</div>}
+              </div>
+              {hasNew&&(
+                <div style={{background:"rgba(255,255,255,.25)",color:"#fff",padding:"3px 8px",borderRadius:50,fontSize:11,fontWeight:700,display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
+                  <Ico n="bell" size={10} color="#fff"/>
+                  <span>New</span>
+                </div>
+              )}
+            </div>
+            <div style={{background:dk?"#1e293b":"#fff",padding:"9px 16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div style={{display:"flex",alignItems:"center",gap:5,color:sc}}>
+                <Ico n="book" size={12} color={sc}/>
+                <span style={{fontSize:12}}>{postCount} {L?"posts":"条"}</span>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:4,color:"#FFB800"}}>
+                <span style={{fontSize:12,fontWeight:600}}>{L?"Enter":"进入"}</span>
+                <Ico n="trending" size={12} color="#FFB800"/>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function App(){
+  const [data,setDataState]=useState(function(){return loadData();});
+  const [user,setUser]=useState(null);
+  const [lang,setLangState]=useState(function(){try{return localStorage.getItem("th_lang")||"zh";}catch{return "zh";}});
+  const [themeRaw,setThemeRaw]=useState(function(){try{return localStorage.getItem("th_theme")||"light";}catch{return "light";}});
+  const setData=useCallback(function(d){setDataState(d);saveData(d);bcBcast(d);fbPush(d);},[]);
+  const setLang=function(l){setLangState(l);try{localStorage.setItem("th_lang",l);}catch{}};
+  const setTheme=function(v){setThemeRaw(v);try{localStorage.setItem("th_theme",v);}catch{}};
+  useEffect(function(){
+    if(fbUrl()){fbLoad().then(function(d){if(d&&d.users){setDataState(d);saveData(d);}});fbListen(function(d){if(d&&d.users){setDataState(d);saveData(d);}});}
+    if(bc){bc.onmessage=function(e){if(e.data&&e.data.type==="data"&&e.data.d){setDataState(e.data.d);saveData(e.data.d);}};}
+    var cm=curMonth();
+    setDataState(function(prev){
+      if(prev.lastFeeReset!==cm){var nd={...prev,users:prev.users.map(function(u){return u.role==="student"?{...u,feesPaid:false}:u;}),lastFeeReset:cm};saveData(nd);return nd;}
+      return prev;
+    });
+    return function(){if(fbEvt){try{fbEvt.close();}catch{}}};
+  },[]);
+  var isDark=themeRaw==="system"?(window.matchMedia&&window.matchMedia("(prefers-color-scheme:dark)").matches):themeRaw==="dark";
+  var theme=isDark?"dark":"light";
+  var t={};
+  var syncUser=user?data.users.find(function(u){return u.id===user.id;}):null;
+  var showLocked=syncUser&&syncUser.role==="student"&&!syncUser.feesPaid;
+  var showTeacher=syncUser&&syncUser.role==="teacher";
+  var showStudent=syncUser&&syncUser.role==="student"&&!showLocked;
+  return (
+    <Ctx.Provider value={{theme:theme,setTheme:setTheme,lang:lang,setLang:setLang,t:t,data:data,setData:setData}}>
+      {!user&&<LoginPage onLogin={function(u){setUser(u);}}/>}
+      {showLocked&&<LockedPage user={syncUser} onLogout={function(){setUser(null);}}/>}
+      {showTeacher&&<TeacherPortal user={syncUser} onLogout={function(){setUser(null);}}/>}
+      {showStudent&&<StudentPortal user={syncUser} onLogout={function(){setUser(null);}}/>}
+    </Ctx.Provider>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
+</script>
 </body>
 </html>
